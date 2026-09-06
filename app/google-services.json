@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "360984926941",
+    "project_id": "sf-service-for-ever",
+    "storage_bucket": "sf-service-for-ever.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:360984926941:android:5c029af1cdf8d4450c9934",
+        "android_client_info": {
+          "package_name": "com.srr.serviceforever"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_81_TpDqYmPlWAhMht4XH13Z6F75TH0Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
