@@ -33,17 +33,27 @@ import com.google.firebase.auth.FirebaseAuth
 import com.srr.myapplication.R
 import com.srr.myapplication.model.Product
 import com.srr.myapplication.navigation.Screen
+import com.srr.myapplication.repository.FirebaseRepository
 import com.srr.myapplication.util.DummyData
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CustomerHomeScreen(navController: NavHostController) {
+fun CustomerHomeScreen(navController: NavHostController, uid: String) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategoryId by remember { mutableStateOf<String?>(null) }
     val auth = remember { FirebaseAuth.getInstance() }
+    val repository = remember { FirebaseRepository() }
     
-    val filteredProducts = remember(searchQuery, selectedCategoryId) {
-        DummyData.allProducts.filter { product ->
+    var allProducts by remember { mutableStateOf<List<Product>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        allProducts = repository.getProducts()
+        isLoading = false
+    }
+
+    val filteredProducts = remember(searchQuery, selectedCategoryId, allProducts) {
+        allProducts.filter { product ->
             val matchesSearch = product.name.contains(searchQuery, ignoreCase = true)
             val matchesCategory = selectedCategoryId == null || product.categoryId == selectedCategoryId
             matchesSearch && matchesCategory
@@ -91,7 +101,13 @@ fun CustomerHomeScreen(navController: NavHostController) {
                 // "Most Requested Services" Section
                 SectionHeader(title = if (selectedCategoryId == null) "All Services" else "Recommended Services")
                 
-                ProductGrid(filteredProducts, navController)
+                if (isLoading) {
+                    Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    ProductGrid(filteredProducts, navController)
+                }
 
                 Spacer(modifier = Modifier.height(32.dp))
             }
@@ -405,7 +421,7 @@ fun ModernBottomNavigation(navController: NavHostController) {
             icon = { Icon(Icons.Outlined.Person, contentDescription = null) },
             label = { Text("Profile") },
             selected = false,
-            onClick = { /* Profile */ }
+            onClick = { navController.navigate(Screen.Profile.route) }
         )
     }
 }

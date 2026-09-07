@@ -4,18 +4,10 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.srr.myapplication.auth.LoginScreen
-import com.srr.myapplication.auth.OTPScreen
-import com.srr.myapplication.auth.RegistrationScreen
-import com.srr.myapplication.auth.TechnicianRegistrationScreen
-import com.srr.myapplication.auth.RoleSelectionScreen
-import com.srr.myapplication.auth.SplashScreen
-import com.srr.myapplication.customer.CustomerHomeScreen
-import com.srr.myapplication.customer.ProductDetailsScreen
-import com.srr.myapplication.customer.CartScreen
-import com.srr.myapplication.customer.ProfileScreen
-import com.srr.myapplication.technician.TechnicianHomeScreen
-import com.srr.myapplication.admin.AdminDashboardScreen
+import com.srr.myapplication.auth.*
+import com.srr.myapplication.customer.*
+import com.srr.myapplication.technician.*
+import com.srr.myapplication.admin.*
 
 sealed class Screen(val route: String) {
     object Splash : Screen("splash")
@@ -34,7 +26,9 @@ sealed class Screen(val route: String) {
     }
     
     // Customer Screens
-    object CustomerHome : Screen("customer_home")
+    object CustomerHome : Screen("customer_home/{uid}") {
+        fun createRoute(uid: String) = "customer_home/$uid"
+    }
     object ProductDetails : Screen("product_details/{productId}") {
         fun createRoute(productId: String) = "product_details/$productId"
     }
@@ -42,10 +36,14 @@ sealed class Screen(val route: String) {
     object Profile : Screen("profile")
     
     // Technician Screens
-    object TechnicianHome : Screen("technician_home")
+    object TechnicianHome : Screen("technician_home/{uid}") {
+        fun createRoute(uid: String) = "technician_home/$uid"
+    }
     
     // Admin Screens
-    object AdminDashboard : Screen("admin_dashboard")
+    object AdminDashboard : Screen("admin_dashboard/{uid}") {
+        fun createRoute(uid: String) = "admin_dashboard/$uid"
+    }
 }
 
 @Composable
@@ -71,7 +69,10 @@ fun AppNavigation(navController: NavHostController) {
         }
         
         // Customer
-        composable(Screen.CustomerHome.route) { CustomerHomeScreen(navController) }
+        composable(Screen.CustomerHome.route) { backStackEntry ->
+            val uid = backStackEntry.arguments?.getString("uid") ?: ""
+            CustomerHomeScreen(navController, uid)
+        }
         composable(Screen.ProductDetails.route) { backStackEntry ->
             val productId = backStackEntry.arguments?.getString("productId") ?: ""
             ProductDetailsScreen(navController, productId)
@@ -80,9 +81,15 @@ fun AppNavigation(navController: NavHostController) {
         composable(Screen.Profile.route) { ProfileScreen(navController) }
         
         // Technician
-        composable(Screen.TechnicianHome.route) { TechnicianHomeScreen(navController) }
+        composable(Screen.TechnicianHome.route) { backStackEntry ->
+            val uid = backStackEntry.arguments?.getString("uid") ?: ""
+            TechnicianHomeScreen(navController, uid)
+        }
         
         // Admin
-        composable(Screen.AdminDashboard.route) { AdminDashboardScreen(navController) }
+        composable(Screen.AdminDashboard.route) { backStackEntry ->
+            val uid = backStackEntry.arguments?.getString("uid") ?: ""
+            AdminDashboardScreen(navController, uid)
+        }
     }
 }

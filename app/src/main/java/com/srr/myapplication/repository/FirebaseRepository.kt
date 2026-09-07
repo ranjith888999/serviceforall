@@ -1,8 +1,8 @@
 package com.srr.myapplication.repository
 
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.srr.myapplication.model.Product
 import com.srr.myapplication.model.QuotationRequest
 import com.srr.myapplication.model.User
@@ -12,27 +12,23 @@ import kotlinx.coroutines.tasks.await
 class FirebaseRepository {
     private val auth = FirebaseAuth.getInstance()
     private val firestore = FirebaseFirestore.getInstance()
-    private val database = FirebaseDatabase.getInstance()
 
     fun getCurrentUserUid(): String? = auth.currentUser?.uid
 
     suspend fun saveUser(user: User) {
-        // If auth.currentUser is null (e.g., during UI testing without real Phone Auth),
-        // we use the user's phone number as the document ID to ensure data is saved.
-        val docId = if (auth.currentUser?.uid != null) auth.currentUser?.uid!! else user.phone
-        if (docId.isEmpty()) return
-        firestore.collection("users").document(docId).set(user).await()
+        if (user.uid.isEmpty()) return
+        // Use SetOptions.merge() to ensure we don't overwrite existing fields if we only pass a partial object,
+        // but here we pass the whole object. It's safer for updates.
+        firestore.collection("users").document(user.uid).set(user, SetOptions.merge()).await()
     }
 
     suspend fun getUser(uid: String): User? {
         return try {
-            // First try to get by UID
             val snapshot = firestore.collection("users").document(uid).get().await()
             if (snapshot.exists()) {
-                snapshot.toObject(User::class.java)
+                val user = snapshot.toObject(User::class.java)
+                user?.copy(uid = snapshot.id) // Ensure UID matches document ID
             } else {
-                // Fallback: try to find a document where the ID is the phone number (for mock login cases)
-                // This handles cases where uid passed was actually a phone number
                 null
             }
         } catch (e: Exception) {
@@ -47,7 +43,9 @@ class FirebaseRepository {
                 .get()
                 .await()
             if (!query.isEmpty) {
-                query.documents[0].toObject(User::class.java)
+                val doc = query.documents[0]
+                val user = doc.toObject(User::class.java)
+                user?.copy(uid = doc.id)
             } else {
                 null
             }
@@ -66,8 +64,13 @@ class FirebaseRepository {
                 firestore.collection("users").document(document.id).delete().await()
             }
         } catch (e: Exception) {
-            // Handle or log error
         }
+    }
+
+    suspend fun deleteUser(uid: String) {
+        try {
+            firestore.collection("users").document(uid).delete().await()
+        } catch (e: Exception) {}
     }
 
     suspend fun saveQuotationRequest(request: QuotationRequest) {
@@ -77,15 +80,26 @@ class FirebaseRepository {
     }
 
     suspend fun getProducts(): List<Product> {
-        // For now, return dummy data as we are using it for subcategories
-        return DummyData.allProducts
+        return try {
+            val snapshot = firestore.collection("products").get().await()
+            if (snapshot.isEmpty) {
+                val dummy = DummyData.allProducts
+                dummy.forEach { addOrUpdateProduct(it) }
+                dummy
+            } else {
+                snapshot.toObjects(Product::class.java)
+            }
+        } catch (e: Exception) {
+            DummyData.allProducts
+        }
     }
 
-    // Admin Methods
     suspend fun getAllUsers(): List<User> {
         return try {
             val snapshot = firestore.collection("users").get().await()
-            snapshot.toObjects(User::class.java)
+            snapshot.documents.mapNotNull { doc ->
+                doc.toObject(User::class.java)?.copy(uid = doc.id)
+            }
         } catch (e: Exception) {
             emptyList()
         }
@@ -96,36 +110,38 @@ class FirebaseRepository {
             val snapshot = firestore.collection("users")
                 .whereEqualTo("role", "Technician")
                 .whereEqualTo("isApproved", false)
-                .whereEqualTo("isPending", true)
                 .get()
                 .await()
-            snapshot.toObjects(User::class.java)
+            snapshot.documents.mapNotNull { doc ->
+                doc.toObject(User::class.java)?.copy(uid = doc.id)
+            }
         } catch (e: Exception) {
             emptyList()
         }
     }
 
     suspend fun updateApprovalStatus(uid: String, approved: Boolean) {
+        if (uid.isEmpty()) return
         try {
-            firestore.collection("users").document(uid).update(
+            // Using set with merge is more robust than update
+            firestore.collection("users").document(uid).set(
                 mapOf(
                     "isApproved" to approved,
                     "isPending" to false
-                )
+                ),
+                SetOptions.merge()
             ).await()
         } catch (e: Exception) {
-            // Log error
+            throw e
         }
     }
 
-    // Quotation Methods
     suspend fun getAllQuotations(): List<QuotationRequest> {
         return try {
             val snapshot = firestore.collection("quotations")
-                .orderBy("timestamp")
                 .get()
                 .await()
-            snapshot.toObjects(QuotationRequest::class.java)
+            snapshot.toObjects(QuotationRequest::class.java).sortedByDescending { it.timestamp }
         } catch (e: Exception) {
             emptyList()
         }
@@ -141,7 +157,7 @@ class FirebaseRepository {
                 )
             ).await()
         } catch (e: Exception) {
-            // Log error
+            throw e
         }
     }
 
@@ -153,14 +169,19 @@ class FirebaseRepository {
         try {
             firestore.collection("quotations").document(quotationId).update(updates).await()
         } catch (e: Exception) {
-            // Log error
+            throw e
         }
     }
 
-    // Product Management
     suspend fun addOrUpdateProduct(product: Product) {
         val id = if (product.id.isEmpty()) firestore.collection("products").document().id else product.id
         val finalProduct = product.copy(id = id)
-        firestore.collection("products").document(id).set(finalProduct).await()
+        firestore.collection("products").document(id).set(finalProduct, SetOptions.merge()).await()
+    }
+
+    suspend fun deleteProduct(productId: String) {
+        try {
+            firestore.collection("products").document(productId).delete().await()
+        } catch (e: Exception) {}
     }
 }

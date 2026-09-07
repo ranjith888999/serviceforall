@@ -30,7 +30,7 @@ import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TechnicianHomeScreen(navController: NavHostController) {
+fun TechnicianHomeScreen(navController: NavHostController, uid: String) {
     val auth = remember { FirebaseAuth.getInstance() }
     val repository = remember { FirebaseRepository() }
     val scope = rememberCoroutineScope()
@@ -42,12 +42,10 @@ fun TechnicianHomeScreen(navController: NavHostController) {
     fun refreshData() {
         isLoading = true
         scope.launch {
-            val uid = auth.currentUser?.uid
-            if (uid != null) {
-                user = repository.getUser(uid)
-                // Filter quotations assigned to this technician
-                assignedTasks = repository.getAllQuotations().filter { it.assignedTechnicianId == uid }
-            }
+            // Use the passed UID to fetch user data
+            user = repository.getUser(uid)
+            // Filter quotations assigned to this technician (using the passed UID)
+            assignedTasks = repository.getAllQuotations().filter { it.assignedTechnicianId == uid }
             isLoading = false
         }
     }

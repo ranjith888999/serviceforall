@@ -78,43 +78,37 @@ fun OTPScreen(navController: NavHostController, phoneNumber: String) {
                     if (otp.length == 6) {
                         isLoading = true
                         scope.launch {
-                            // Normalize phone number for lookup
                             val formattedPhone = if (phoneNumber.startsWith("+91")) phoneNumber else "+91$phoneNumber"
-                            
-                            // 1. Try finding user by phone number (Primary check)
                             val userByPhone = repository.getUserByPhone(formattedPhone)
                             
                             if (userByPhone != null && userByPhone.registrationComplete) {
-                                // EXISTING USER FOUND: Skip Registration
                                 when (userByPhone.role) {
-                                    "Technician" -> navController.navigate(Screen.TechnicianHome.route) {
+                                    "Technician" -> navController.navigate(Screen.TechnicianHome.createRoute(userByPhone.uid)) {
                                         popUpTo(0) { inclusive = true }
                                     }
-                                    "Admin" -> navController.navigate(Screen.AdminDashboard.route) {
+                                    "Admin" -> navController.navigate(Screen.AdminDashboard.createRoute(userByPhone.uid)) {
                                         popUpTo(0) { inclusive = true }
                                     }
-                                    else -> navController.navigate(Screen.CustomerHome.route) {
+                                    else -> navController.navigate(Screen.CustomerHome.createRoute(userByPhone.uid)) {
                                         popUpTo(0) { inclusive = true }
                                     }
                                 }
                             } else {
-                                // 2. Fallback: Try finding by current UID if authenticated
                                 val currentUid = auth.currentUser?.uid
                                 if (currentUid != null) {
                                     val userByUid = repository.getUser(currentUid)
                                     if (userByUid != null && userByUid.registrationComplete) {
-                                        // User exists in Firestore under UID
                                         if (userByUid.role == "Technician") {
-                                            navController.navigate(Screen.TechnicianHome.route) { popUpTo(0) { inclusive = true } }
+                                            navController.navigate(Screen.TechnicianHome.createRoute(userByUid.uid)) { popUpTo(0) { inclusive = true } }
+                                        } else if (userByUid.role == "Admin") {
+                                            navController.navigate(Screen.AdminDashboard.createRoute(userByUid.uid)) { popUpTo(0) { inclusive = true } }
                                         } else {
-                                            navController.navigate(Screen.CustomerHome.route) { popUpTo(0) { inclusive = true } }
+                                            navController.navigate(Screen.CustomerHome.createRoute(userByUid.uid)) { popUpTo(0) { inclusive = true } }
                                         }
                                     } else {
-                                        // Authenticated but not registered
                                         navController.navigate(Screen.RoleSelection.createRoute(phoneNumber))
                                     }
                                 } else {
-                                    // 3. NEW USER: Go to Role Selection
                                     navController.navigate(Screen.RoleSelection.createRoute(phoneNumber))
                                 }
                             }

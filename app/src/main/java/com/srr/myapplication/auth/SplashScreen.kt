@@ -43,17 +43,19 @@ fun SplashScreen(navController: NavHostController) {
         if (currentUser != null) {
             val user = repository.getUser(currentUser.uid)
             if (user != null && user.registrationComplete) {
-                if (user.role == "Technician") {
-                    navController.navigate(Screen.TechnicianHome.route) {
+                when (user.role) {
+                    "Technician" -> navController.navigate(Screen.TechnicianHome.createRoute(user.uid)) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
-                } else {
-                    navController.navigate(Screen.CustomerHome.route) {
+                    "Admin" -> navController.navigate(Screen.AdminDashboard.createRoute(user.uid)) {
+                        popUpTo(Screen.Splash.route) { inclusive = true }
+                    }
+                    else -> navController.navigate(Screen.CustomerHome.createRoute(user.uid)) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
                 }
             } else {
-                navController.navigate(Screen.RoleSelection.route) {
+                navController.navigate(Screen.RoleSelection.createRoute(currentUser.phoneNumber ?: "")) {
                     popUpTo(Screen.Splash.route) { inclusive = true }
                 }
             }
