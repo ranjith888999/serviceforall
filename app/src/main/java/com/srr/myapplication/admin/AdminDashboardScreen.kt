@@ -184,7 +184,7 @@ fun TechniciansApprovalList(allTechs: List<User>, onAction: (String, Boolean) ->
             EmptyState(message = "No technicians found for this filter")
         } else {
             LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(filteredTechs) { tech ->
+                items(filteredTechs, key = { it.uid }) { tech ->
                     TechnicianApprovalCard(tech, onAction)
                 }
             }
@@ -198,7 +198,7 @@ fun QuotationsList(quotations: List<QuotationRequest>, technicians: List<User>, 
         EmptyState(message = "No quotation requests yet")
     } else {
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(quotations) { quote ->
+            items(quotations, key = { it.id }) { quote ->
                 QuotationCard(quote, technicians, onAssign)
             }
         }
@@ -262,7 +262,7 @@ fun QuotationCard(quote: QuotationRequest, technicians: List<User>, onAssign: (S
                     Text("No approved technicians available.")
                 } else {
                     LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
-                        items(technicians) { tech ->
+                        items(technicians, key = { it.uid }) { tech ->
                             ListItem(
                                 headlineContent = { Text(tech.name) },
                                 supportingContent = { Text(tech.location) },
@@ -309,7 +309,7 @@ fun AllUsersList(users: List<User>, onDelete: (String) -> Unit, onUpdate: (User)
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(users) { user ->
+            items(users, key = { it.uid }) { user ->
                 Card(
                     modifier = Modifier.fillMaxWidth().clickable { showEditDialog = user },
                     shape = RoundedCornerShape(12.dp),
@@ -392,7 +392,7 @@ fun ProductManagementList(products: List<Product>, onDelete: (String) -> Unit, o
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(products) { product ->
+            items(products, key = { it.id }) { product ->
                 Card(
                     modifier = Modifier.fillMaxWidth().clickable { showEditDialog = product },
                     shape = RoundedCornerShape(12.dp),

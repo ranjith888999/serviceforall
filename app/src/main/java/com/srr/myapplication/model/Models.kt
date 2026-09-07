@@ -1,5 +1,7 @@
 package com.srr.myapplication.model
 
+import com.google.firebase.firestore.PropertyName
+
 data class User(
     val uid: String = "",
     val name: String = "",
@@ -11,8 +13,14 @@ data class User(
     val aadharNumber: String = "",
     val panNumber: String = "",
     val registrationComplete: Boolean = false,
-    val isApproved: Boolean = false,
-    val isPending: Boolean = true
+    
+    @get:PropertyName("isApproved")
+    @set:PropertyName("isApproved")
+    var isApproved: Boolean = false,
+    
+    @get:PropertyName("isPending")
+    @set:PropertyName("isPending")
+    var isPending: Boolean = true
 )
 
 data class Category(

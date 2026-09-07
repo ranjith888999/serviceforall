@@ -3,6 +3,7 @@ package com.srr.myapplication.repository
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import com.srr.myapplication.model.Product
 import com.srr.myapplication.model.QuotationRequest
 import com.srr.myapplication.model.User
@@ -17,22 +18,23 @@ class FirebaseRepository {
 
     suspend fun saveUser(user: User) {
         if (user.uid.isEmpty()) return
-        // Use SetOptions.merge() to ensure we don't overwrite existing fields if we only pass a partial object,
-        // but here we pass the whole object. It's safer for updates.
         firestore.collection("users").document(user.uid).set(user, SetOptions.merge()).await()
     }
 
     suspend fun getUser(uid: String): User? {
         return try {
-            val snapshot = firestore.collection("users").document(uid).get().await()
+            // Force fetch from server to get latest status
+            val snapshot = firestore.collection("users").document(uid).get(Source.SERVER).await()
             if (snapshot.exists()) {
                 val user = snapshot.toObject(User::class.java)
-                user?.copy(uid = snapshot.id) // Ensure UID matches document ID
+                user?.copy(uid = snapshot.id)
             } else {
                 null
             }
         } catch (e: Exception) {
-            null
+            // Fallback to cache if server fails
+            val snapshot = firestore.collection("users").document(uid).get().await()
+            snapshot.toObject(User::class.java)?.copy(uid = snapshot.id)
         }
     }
 
@@ -40,12 +42,11 @@ class FirebaseRepository {
         return try {
             val query = firestore.collection("users")
                 .whereEqualTo("phone", phone)
-                .get()
+                .get(Source.SERVER)
                 .await()
             if (!query.isEmpty) {
                 val doc = query.documents[0]
-                val user = doc.toObject(User::class.java)
-                user?.copy(uid = doc.id)
+                doc.toObject(User::class.java)?.copy(uid = doc.id)
             } else {
                 null
             }
@@ -81,7 +82,7 @@ class FirebaseRepository {
 
     suspend fun getProducts(): List<Product> {
         return try {
-            val snapshot = firestore.collection("products").get().await()
+            val snapshot = firestore.collection("products").get(Source.SERVER).await()
             if (snapshot.isEmpty) {
                 val dummy = DummyData.allProducts
                 dummy.forEach { addOrUpdateProduct(it) }
@@ -90,40 +91,37 @@ class FirebaseRepository {
                 snapshot.toObjects(Product::class.java)
             }
         } catch (e: Exception) {
-            DummyData.allProducts
+            val snapshot = firestore.collection("products").get().await()
+            if (snapshot.isEmpty) DummyData.allProducts else snapshot.toObjects(Product::class.java)
         }
     }
 
     suspend fun getAllUsers(): List<User> {
         return try {
+            val snapshot = firestore.collection("users").get(Source.SERVER).await()
+            snapshot.documents.mapNotNull { doc ->
+                doc.toObject(User::class.java)?.copy(uid = doc.id)
+            }
+        } catch (e: Exception) {
             val snapshot = firestore.collection("users").get().await()
             snapshot.documents.mapNotNull { doc ->
                 doc.toObject(User::class.java)?.copy(uid = doc.id)
             }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    suspend fun getPendingTechnicians(): List<User> {
-        return try {
-            val snapshot = firestore.collection("users")
-                .whereEqualTo("role", "Technician")
-                .whereEqualTo("isApproved", false)
-                .get()
-                .await()
-            snapshot.documents.mapNotNull { doc ->
-                doc.toObject(User::class.java)?.copy(uid = doc.id)
-            }
-        } catch (e: Exception) {
-            emptyList()
         }
     }
 
     suspend fun updateApprovalStatus(uid: String, approved: Boolean) {
         if (uid.isEmpty()) return
         try {
-            // Using set with merge is more robust than update
+            // Using update is better for specific fields to ensure listeners trigger
+            firestore.collection("users").document(uid).update(
+                mapOf(
+                    "isApproved" to approved,
+                    "isPending" to false
+                )
+            ).await()
+        } catch (e: Exception) {
+            // If document doesn't exist for some reason, use set merge
             firestore.collection("users").document(uid).set(
                 mapOf(
                     "isApproved" to approved,
@@ -131,19 +129,16 @@ class FirebaseRepository {
                 ),
                 SetOptions.merge()
             ).await()
-        } catch (e: Exception) {
-            throw e
         }
     }
 
     suspend fun getAllQuotations(): List<QuotationRequest> {
         return try {
-            val snapshot = firestore.collection("quotations")
-                .get()
-                .await()
+            val snapshot = firestore.collection("quotations").get(Source.SERVER).await()
             snapshot.toObjects(QuotationRequest::class.java).sortedByDescending { it.timestamp }
         } catch (e: Exception) {
-            emptyList()
+            val snapshot = firestore.collection("quotations").get().await()
+            snapshot.toObjects(QuotationRequest::class.java).sortedByDescending { it.timestamp }
         }
     }
 
