@@ -1,5 +1,8 @@
 package com.srr.myapplication.auth
 
+import android.content.Intent
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -20,6 +24,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.srr.myapplication.model.User
 import com.srr.myapplication.navigation.Screen
 import com.srr.myapplication.repository.FirebaseRepository
+import com.srr.myapplication.util.LocationHelper
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,12 +35,32 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
     var address by remember { mutableStateOf("") }
     var aadharNumber by remember { mutableStateOf("") }
     var panNumber by remember { mutableStateOf("") }
-    var location by remember { mutableStateOf("") } // Store as string for now
+    var locationName by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var isDetectingLocation by remember { mutableStateOf(false) }
+    var showGpsDialog by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { FirebaseRepository() }
     val auth = remember { FirebaseAuth.getInstance() }
+
+    if (showGpsDialog) {
+        AlertDialog(
+            onDismissRequest = { showGpsDialog = false },
+            title = { Text("Location Services Disabled") },
+            text = { Text("Please enable GPS/Location services in settings to automatically fetch your location.") },
+            confirmButton = {
+                Button(onClick = {
+                    showGpsDialog = false
+                    context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                }) { Text("Open Settings") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGpsDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -99,33 +124,52 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
                 RegistrationField(value = address, onValueChange = { address = it }, label = "Full Address", icon = Icons.Default.Home)
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                // Location Picker Simulation
+                // Location Picker
                 OutlinedTextField(
-                    value = location,
-                    onValueChange = { location = it },
+                    value = locationName,
+                    onValueChange = { locationName = it },
                     label = { Text("Service Location / City") },
                     leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
                     trailingIcon = {
-                        IconButton(onClick = { 
-                            location = "Fetching from GPS..." 
-                        }) {
-                            Icon(Icons.Default.MyLocation, contentDescription = "Use My Location", tint = MaterialTheme.colorScheme.primary)
+                        IconButton(
+                            enabled = !isDetectingLocation,
+                            onClick = { 
+                                scope.launch {
+                                    isDetectingLocation = true
+                                    val fetched = LocationHelper.getCurrentLocationName(context)
+                                    isDetectingLocation = false
+                                    if (fetched == "GPS Disabled") {
+                                        showGpsDialog = true
+                                    } else if (fetched.startsWith("Error") || fetched.contains("Unable")) {
+                                        Toast.makeText(context, fetched, Toast.LENGTH_LONG).show()
+                                    } else {
+                                        locationName = fetched
+                                    }
+                                }
+                            }
+                        ) {
+                            if (isDetectingLocation) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Default.MyLocation, contentDescription = "Use My Location", tint = MaterialTheme.colorScheme.primary)
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    singleLine = true
+                    singleLine = true,
+                    readOnly = true
                 )
 
                 Spacer(modifier = Modifier.height(40.dp))
 
                 Button(
                     onClick = {
-                        if (validateTechnician(name, aadharNumber, panNumber, address, location)) {
+                        if (validateTechnician(name, aadharNumber, panNumber, address, locationName)) {
                             isLoading = true
                             scope.launch {
                                 val phone = if (phoneNumber.startsWith("+91")) phoneNumber else "+91$phoneNumber"
-                                val uid = auth.currentUser?.uid ?: phone // Use phone as UID fallback
+                                val uid = auth.currentUser?.uid ?: phone
                                 
                                 val newUser = User(
                                     uid = uid,
@@ -134,13 +178,15 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
                                     phone = phone,
                                     role = "Technician",
                                     address = address,
-                                    location = location,
+                                    location = locationName,
+                                    locations = listOf(locationName).filter { it.isNotEmpty() },
+                                    selectedLocationIndex = 0,
                                     aadharNumber = aadharNumber,
                                     panNumber = panNumber,
                                     registrationComplete = true
                                 )
                                 repository.saveUser(newUser)
-                                navController.navigate(Screen.TechnicianHome.route) {
+                                navController.navigate(Screen.TechnicianHome.createRoute(uid)) {
                                     popUpTo(0) { inclusive = true }
                                 }
                             }
@@ -150,7 +196,7 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
                         .fillMaxWidth()
                         .height(56.dp),
                     shape = RoundedCornerShape(12.dp),
-                    enabled = name.isNotEmpty() && aadharNumber.length == 12 && panNumber.length == 10 && address.isNotEmpty()
+                    enabled = name.isNotEmpty() && aadharNumber.length == 12 && panNumber.length == 10 && address.isNotEmpty() && locationName.isNotEmpty() && !isDetectingLocation
                 ) {
                     Text("REGISTER AS TECHNICIAN")
                 }

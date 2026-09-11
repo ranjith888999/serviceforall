@@ -61,6 +61,7 @@ dependencies {
     // Image loading & Animations
     implementation(libs.coil.compose)
     implementation(libs.lottie.compose)
+    implementation(libs.google.play.services.location)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

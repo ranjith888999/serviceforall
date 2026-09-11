@@ -1,5 +1,7 @@
 package com.srr.myapplication.auth
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -12,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -28,8 +31,26 @@ fun SplashScreen(navController: NavHostController) {
     val scale = remember { Animatable(0f) }
     val repository = remember { FirebaseRepository() }
     val auth = remember { FirebaseAuth.getInstance() }
+    val context = LocalContext.current
+
+    val permissionsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        // Handle results if needed
+    }
 
     LaunchedEffect(key1 = true) {
+        // Request permissions on start
+        permissionsLauncher.launch(
+            arrayOf(
+                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                android.Manifest.permission.READ_SMS,
+                android.Manifest.permission.RECEIVE_SMS,
+                android.Manifest.permission.READ_CONTACTS
+            )
+        )
+
         scale.animateTo(
             targetValue = 0.9f,
             animationSpec = spring(

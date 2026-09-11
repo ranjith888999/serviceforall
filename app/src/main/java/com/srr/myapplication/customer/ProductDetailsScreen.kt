@@ -54,14 +54,16 @@ fun ProductDetailsScreen(navController: NavHostController, productId: String) {
         },
         bottomBar = {
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
                 shadowElevation = 16.dp,
                 color = Color.White
             ) {
                 Button(
                     onClick = { showQuotationDialog = true },
                     modifier = Modifier
-                        .padding(16.dp)
+                        .padding(horizontal = 16.dp, vertical = 20.dp)
                         .fillMaxWidth()
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp),

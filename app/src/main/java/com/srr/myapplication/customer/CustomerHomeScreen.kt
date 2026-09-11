@@ -36,6 +36,16 @@ import com.srr.myapplication.navigation.Screen
 import com.srr.myapplication.repository.FirebaseRepository
 import com.srr.myapplication.util.DummyData
 
+import androidx.compose.ui.platform.LocalContext
+import com.srr.myapplication.model.User
+import com.srr.myapplication.util.LocationHelper
+import kotlinx.coroutines.launch
+
+import android.widget.Toast
+import com.srr.myapplication.model.QuotationRequest
+import java.util.Date
+import java.util.Locale
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CustomerHomeScreen(navController: NavHostController, uid: String) {
@@ -43,13 +53,28 @@ fun CustomerHomeScreen(navController: NavHostController, uid: String) {
     var selectedCategoryId by remember { mutableStateOf<String?>(null) }
     val auth = remember { FirebaseAuth.getInstance() }
     val repository = remember { FirebaseRepository() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     
     var allProducts by remember { mutableStateOf<List<Product>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var userData by remember { mutableStateOf<User?>(null) }
+    var showLocationDialog by remember { mutableStateOf(false) }
+    var isFetchingLocation by remember { mutableStateOf(false) }
+    var showCategoryDialog by remember { mutableStateOf(false) }
+    var showRequestsDialog by remember { mutableStateOf(false) }
+    var myRequests by remember { mutableStateOf<List<QuotationRequest>>(emptyList()) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(uid) {
+        userData = repository.getUser(uid)
         allProducts = repository.getProducts()
         isLoading = false
+    }
+
+    LaunchedEffect(showRequestsDialog) {
+        if (showRequestsDialog) {
+            myRequests = repository.getAllQuotations().filter { it.userId == uid }
+        }
     }
 
     val filteredProducts = remember(searchQuery, selectedCategoryId, allProducts) {
@@ -60,13 +85,97 @@ fun CustomerHomeScreen(navController: NavHostController, uid: String) {
         }
     }
 
+    if (showCategoryDialog) {
+        CategorySelectionDialog(
+            categories = DummyData.categories,
+            selectedCategoryId = selectedCategoryId,
+            onDismiss = { showCategoryDialog = false },
+            onCategorySelected = { id ->
+                selectedCategoryId = id
+                showCategoryDialog = false
+            }
+        )
+    }
+
+    if (showRequestsDialog) {
+        RequestsHistoryDialog(
+            requests = myRequests,
+            onDismiss = { showRequestsDialog = false }
+        )
+    }
+
+    if (showLocationDialog && userData != null) {
+        LocationSelectionDialog(
+            user = userData!!,
+            isFetching = isFetchingLocation,
+            onDismiss = { if (!isFetchingLocation) showLocationDialog = false },
+            onLocationSelected = { index ->
+                scope.launch {
+                    val updatedUser = userData!!.copy(selectedLocationIndex = index)
+                    repository.saveUser(updatedUser)
+                    userData = updatedUser
+                    showLocationDialog = false
+                }
+            },
+            onAddLocation = { newLocation ->
+                scope.launch {
+                    val currentLocations = userData!!.locations.toMutableList()
+                    if (currentLocations.size < 3) {
+                        currentLocations.add(newLocation)
+                        val updatedUser = userData!!.copy(
+                            locations = currentLocations,
+                            selectedLocationIndex = currentLocations.size - 1
+                        )
+                        repository.saveUser(updatedUser)
+                        userData = updatedUser
+                    }
+                    showLocationDialog = false
+                }
+            },
+            onAutoFetch = {
+                scope.launch {
+                    isFetchingLocation = true
+                    val fetched = LocationHelper.getCurrentLocationName(context)
+                    isFetchingLocation = false
+                    
+                    if (fetched.startsWith("Error") || fetched.contains("Disabled") || fetched.contains("Unable")) {
+                        Toast.makeText(context, fetched, Toast.LENGTH_LONG).show()
+                    } else {
+                        val currentLocations = userData!!.locations.toMutableList()
+                        if (currentLocations.size < 3) {
+                            currentLocations.add(fetched)
+                            val updatedUser = userData!!.copy(
+                                locations = currentLocations,
+                                selectedLocationIndex = currentLocations.size - 1
+                            )
+                            repository.saveUser(updatedUser)
+                            userData = updatedUser
+                        } else {
+                            currentLocations[userData!!.selectedLocationIndex] = fetched
+                            val updatedUser = userData!!.copy(locations = currentLocations)
+                            repository.saveUser(updatedUser)
+                            userData = updatedUser
+                        }
+                        showLocationDialog = false
+                    }
+                }
+            }
+        )
+    }
+
     Scaffold(
-        bottomBar = { ModernBottomNavigation(navController) }
+        bottomBar = { 
+            ModernBottomNavigation(
+                navController = navController,
+                onCategoriesClick = { showCategoryDialog = true },
+                onRequestsClick = { showRequestsDialog = true }
+            ) 
+        }
     ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFF1F8F1)) // Light green background from reference
+                .background(Color(0xFFF1F8F1))
         ) {
             Column(
                 modifier = Modifier
@@ -78,6 +187,11 @@ fun CustomerHomeScreen(navController: NavHostController, uid: String) {
                 TopSearchSection(
                     query = searchQuery,
                     onQueryChange = { searchQuery = it },
+                    currentLocation = userData?.let { 
+                        if (it.locations.isNotEmpty()) it.locations.getOrNull(it.selectedLocationIndex) ?: "Select Location"
+                        else it.location.ifEmpty { "Select Location" }
+                    } ?: "Loading...",
+                    onLocationClick = { showLocationDialog = true },
                     onLogout = {
                         auth.signOut()
                         navController.navigate(Screen.Login.route) {
@@ -116,7 +230,14 @@ fun CustomerHomeScreen(navController: NavHostController, uid: String) {
 }
 
 @Composable
-fun TopSearchSection(query: String, onQueryChange: (String) -> Unit, onLogout: () -> Unit, onProfileClick: () -> Unit) {
+fun TopSearchSection(
+    query: String, 
+    onQueryChange: (String) -> Unit, 
+    currentLocation: String,
+    onLocationClick: () -> Unit,
+    onLogout: () -> Unit, 
+    onProfileClick: () -> Unit
+) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -130,16 +251,40 @@ fun TopSearchSection(query: String, onQueryChange: (String) -> Unit, onLogout: (
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
-                    Text(
-                        text = "ServiceForEver",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            letterSpacing = 1.sp
-                        )
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onLocationClick() },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
                     )
-                    Text(text = "Your Trusted Service Partner", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Column {
+                        Text(
+                            text = currentLocation,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Tap to change location",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
+                    Icon(
+                        Icons.Default.ArrowDropDown,
+                        contentDescription = null,
+                        tint = Color.Gray
+                    )
                 }
                 Row {
                     IconButton(onClick = onProfileClick) {
@@ -165,6 +310,13 @@ fun TopSearchSection(query: String, onQueryChange: (String) -> Unit, onLogout: (
                     .shadow(4.dp, RoundedCornerShape(12.dp)),
                 placeholder = { Text("Search for \"CCTV\"", color = Color.Gray) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { onQueryChange("") }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear", tint = Color.Gray)
+                        }
+                    }
+                },
                 shape = RoundedCornerShape(12.dp),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
@@ -394,7 +546,204 @@ fun ServiceCard(product: Product, modifier: Modifier = Modifier, onClick: () -> 
 }
 
 @Composable
-fun ModernBottomNavigation(navController: NavHostController) {
+fun LocationSelectionDialog(
+    user: User,
+    isFetching: Boolean,
+    onDismiss: () -> Unit,
+    onLocationSelected: (Int) -> Unit,
+    onAddLocation: (String) -> Unit,
+    onAutoFetch: () -> Unit
+) {
+    var newLocationText by remember { mutableStateOf("") }
+    var isAddingNew by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Location") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (isFetching) {
+                    Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                    Text(
+                        "Detecting your location...",
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                } else {
+                    user.locations.forEachIndexed { index, loc ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onLocationSelected(index) }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = index == user.selectedLocationIndex,
+                                onClick = { onLocationSelected(index) }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = loc, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+
+                    if (user.locations.size < 3 && !isAddingNew) {
+                        TextButton(
+                            onClick = { isAddingNew = true },
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Add New Location")
+                        }
+                    }
+
+                    if (isAddingNew) {
+                        OutlinedTextField(
+                            value = newLocationText,
+                            onValueChange = { newLocationText = it },
+                            label = { Text("Enter Location Manually") },
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            trailingIcon = {
+                                IconButton(onClick = { if (newLocationText.isNotEmpty()) onAddLocation(newLocationText) }) {
+                                    Icon(Icons.Default.Check, contentDescription = "Add")
+                                }
+                            }
+                        )
+                    }
+
+                    Divider(modifier = Modifier.padding(vertical = 16.dp))
+
+                    Button(
+                        onClick = onAutoFetch,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.MyLocation, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Auto-detect Current Location")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, enabled = !isFetching) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+@Composable
+fun CategorySelectionDialog(
+    categories: List<com.srr.myapplication.model.Category>,
+    selectedCategoryId: String?,
+    onDismiss: () -> Unit,
+    onCategorySelected: (String?) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Category") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                ListItem(
+                    headlineContent = { Text("All Services") },
+                    leadingContent = { Icon(Icons.Default.GridView, contentDescription = null) },
+                    modifier = Modifier.clickable { onCategorySelected(null) },
+                    trailingContent = { if (selectedCategoryId == null) Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+                )
+                categories.forEach { category ->
+                    ListItem(
+                        headlineContent = { Text(category.name) },
+                        leadingContent = { Icon(getCategoryIcon(category.id), contentDescription = null) },
+                        modifier = Modifier.clickable { onCategorySelected(category.id) },
+                        trailingContent = { if (selectedCategoryId == category.id) Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun RequestsHistoryDialog(
+    requests: List<QuotationRequest>,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("My Service Requests") },
+        text = {
+            if (requests.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                    Text("No requests found", color = Color.Gray)
+                }
+            } else {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    requests.forEach { request ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF9F9F9)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(text = request.productName, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Surface(
+                                        color = getStatusColor(request.status),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = request.status,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+                                Text(text = "Service: ${request.serviceType}", style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    text = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date(request.timestamp)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
+}
+
+private fun getStatusColor(status: String): Color {
+    return when (status) {
+        "Pending" -> Color(0xFFFFA500)
+        "Assigned", "In Progress" -> Color(0xFF2196F3)
+        "Completed" -> Color(0xFF4CAF50)
+        "Cancelled" -> Color(0xFFF44336)
+        else -> Color.Gray
+    }
+}
+
+@Composable
+fun ModernBottomNavigation(
+    navController: NavHostController,
+    onCategoriesClick: () -> Unit,
+    onRequestsClick: () -> Unit
+) {
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp
@@ -409,13 +758,13 @@ fun ModernBottomNavigation(navController: NavHostController) {
             icon = { Icon(Icons.Outlined.GridView, contentDescription = null) },
             label = { Text("Categories") },
             selected = false,
-            onClick = { /* Categories */ }
+            onClick = onCategoriesClick
         )
         NavigationBarItem(
             icon = { Icon(Icons.Outlined.History, contentDescription = null) },
             label = { Text("Requests") },
             selected = false,
-            onClick = { /* Requests */ }
+            onClick = onRequestsClick
         )
         NavigationBarItem(
             icon = { Icon(Icons.Outlined.Person, contentDescription = null) },

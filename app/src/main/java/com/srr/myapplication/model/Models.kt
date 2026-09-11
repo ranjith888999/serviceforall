@@ -10,6 +10,8 @@ data class User(
     val role: String = "Customer", // Customer, Technician, Admin
     val address: String = "",
     val location: String = "",
+    val locations: List<String> = emptyList(), // Up to 3 locations
+    val selectedLocationIndex: Int = 0,
     val aadharNumber: String = "",
     val panNumber: String = "",
     val registrationComplete: Boolean = false,
