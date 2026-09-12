@@ -62,6 +62,8 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.lottie.compose)
     implementation(libs.google.play.services.location)
+    implementation(libs.javax.mail)
+    implementation(libs.javax.activation)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

@@ -115,26 +115,36 @@ fun TechnicianHomeScreen(navController: NavHostController, uid: String) {
             onAutoFetch = {
                 scope.launch {
                     isFetchingLocation = true
-                    val fetched = LocationHelper.getCurrentLocationName(context)
+                    val result = LocationHelper.getCurrentLocation(context)
                     isFetchingLocation = false
                     
-                    if (fetched == "GPS Disabled") {
+                    if (result == null) {
                         showGpsDialog = true
-                    } else if (fetched.startsWith("Error") || fetched.contains("Unable")) {
-                        Toast.makeText(context, fetched, Toast.LENGTH_LONG).show()
                     } else {
+                        val fetched = result.name
+                        val currentLat = result.latitude
+                        val currentLng = result.longitude
+                        
                         val currentLocations = userData!!.locations.toMutableList()
+                        val currentCoords = userData!!.locationCoords.toMutableList()
+                        
                         if (currentLocations.size < 3) {
                             currentLocations.add(fetched)
+                            currentCoords.add(mapOf("lat" to currentLat, "lng" to currentLng))
                             val updatedUser = userData!!.copy(
                                 locations = currentLocations,
+                                locationCoords = currentCoords,
                                 selectedLocationIndex = currentLocations.size - 1
                             )
                             repository.saveUser(updatedUser)
                             userData = updatedUser
                         } else {
                             currentLocations[userData!!.selectedLocationIndex] = fetched
-                            val updatedUser = userData!!.copy(locations = currentLocations)
+                            currentCoords[userData!!.selectedLocationIndex] = mapOf("lat" to currentLat, "lng" to currentLng)
+                            val updatedUser = userData!!.copy(
+                                locations = currentLocations,
+                                locationCoords = currentCoords
+                            )
                             repository.saveUser(updatedUser)
                             userData = updatedUser
                         }

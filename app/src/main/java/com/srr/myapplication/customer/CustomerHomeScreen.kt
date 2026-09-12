@@ -1,14 +1,17 @@
 package com.srr.myapplication.customer
 
+import android.content.Intent
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -21,6 +24,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -32,17 +36,13 @@ import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
 import com.srr.myapplication.R
 import com.srr.myapplication.model.Product
+import com.srr.myapplication.model.QuotationRequest
+import com.srr.myapplication.model.User
 import com.srr.myapplication.navigation.Screen
 import com.srr.myapplication.repository.FirebaseRepository
 import com.srr.myapplication.util.DummyData
-
-import androidx.compose.ui.platform.LocalContext
-import com.srr.myapplication.model.User
 import com.srr.myapplication.util.LocationHelper
 import kotlinx.coroutines.launch
-
-import android.widget.Toast
-import com.srr.myapplication.model.QuotationRequest
 import java.util.Date
 import java.util.Locale
 
@@ -63,6 +63,7 @@ fun CustomerHomeScreen(navController: NavHostController, uid: String) {
     var isFetchingLocation by remember { mutableStateOf(false) }
     var showCategoryDialog by remember { mutableStateOf(false) }
     var showRequestsDialog by remember { mutableStateOf(false) }
+    var showGpsDialog by remember { mutableStateOf(false) }
     var myRequests by remember { mutableStateOf<List<QuotationRequest>>(emptyList()) }
 
     LaunchedEffect(uid) {
@@ -104,6 +105,23 @@ fun CustomerHomeScreen(navController: NavHostController, uid: String) {
         )
     }
 
+    if (showGpsDialog) {
+        AlertDialog(
+            onDismissRequest = { showGpsDialog = false },
+            title = { Text("Location Services Disabled") },
+            text = { Text("Please enable GPS/Location services in settings to automatically fetch your location.") },
+            confirmButton = {
+                Button(onClick = {
+                    showGpsDialog = false
+                    context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                }) { Text("Open Settings") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGpsDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
     if (showLocationDialog && userData != null) {
         LocationSelectionDialog(
             user = userData!!,
@@ -135,24 +153,36 @@ fun CustomerHomeScreen(navController: NavHostController, uid: String) {
             onAutoFetch = {
                 scope.launch {
                     isFetchingLocation = true
-                    val fetched = LocationHelper.getCurrentLocationName(context)
+                    val result = LocationHelper.getCurrentLocation(context)
                     isFetchingLocation = false
                     
-                    if (fetched.startsWith("Error") || fetched.contains("Disabled") || fetched.contains("Unable")) {
-                        Toast.makeText(context, fetched, Toast.LENGTH_LONG).show()
+                    if (result == null) {
+                        showGpsDialog = true
                     } else {
+                        val fetched = result.name
+                        val currentLat = result.latitude
+                        val currentLng = result.longitude
+                        
                         val currentLocations = userData!!.locations.toMutableList()
+                        val currentCoords = userData!!.locationCoords.toMutableList()
+                        
                         if (currentLocations.size < 3) {
                             currentLocations.add(fetched)
+                            currentCoords.add(mapOf("lat" to currentLat, "lng" to currentLng))
                             val updatedUser = userData!!.copy(
                                 locations = currentLocations,
+                                locationCoords = currentCoords,
                                 selectedLocationIndex = currentLocations.size - 1
                             )
                             repository.saveUser(updatedUser)
                             userData = updatedUser
                         } else {
                             currentLocations[userData!!.selectedLocationIndex] = fetched
-                            val updatedUser = userData!!.copy(locations = currentLocations)
+                            currentCoords[userData!!.selectedLocationIndex] = mapOf("lat" to currentLat, "lng" to currentLng)
+                            val updatedUser = userData!!.copy(
+                                locations = currentLocations,
+                                locationCoords = currentCoords
+                            )
                             repository.saveUser(updatedUser)
                             userData = updatedUser
                         }
@@ -292,7 +322,7 @@ fun TopSearchSection(
                     }
                     IconButton(onClick = onLogout) {
                         Icon(
-                            imageVector = Icons.Default.Logout,
+                            imageVector = Icons.AutoMirrored.Filled.Logout,
                             contentDescription = "Logout",
                             tint = Color.Red.copy(alpha = 0.7f)
                         )
@@ -615,7 +645,7 @@ fun LocationSelectionDialog(
                         )
                     }
 
-                    Divider(modifier = Modifier.padding(vertical = 16.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
                     Button(
                         onClick = onAutoFetch,

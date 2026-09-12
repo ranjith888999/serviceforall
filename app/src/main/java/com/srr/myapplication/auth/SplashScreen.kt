@@ -75,8 +75,14 @@ fun SplashScreen(navController: NavHostController) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
                 }
+            } else if (user != null) {
+                // User exists but registration incomplete
+                navController.navigate(Screen.RoleSelection.createRoute(user.phone.ifEmpty { currentUser.phoneNumber ?: "" })) {
+                    popUpTo(Screen.Splash.route) { inclusive = true }
+                }
             } else {
-                navController.navigate(Screen.RoleSelection.createRoute(currentUser.phoneNumber ?: "")) {
+                // No user data in database, go to login
+                navController.navigate(Screen.Login.route) {
                     popUpTo(Screen.Splash.route) { inclusive = true }
                 }
             }

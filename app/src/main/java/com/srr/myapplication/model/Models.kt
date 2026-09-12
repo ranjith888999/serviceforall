@@ -10,7 +10,10 @@ data class User(
     val role: String = "Customer", // Customer, Technician, Admin
     val address: String = "",
     val location: String = "",
+    val latitude: Double = 0.0,
+    val longitude: Double = 0.0,
     val locations: List<String> = emptyList(), // Up to 3 locations
+    val locationCoords: List<Map<String, Double>> = emptyList(), // List of {lat, lng}
     val selectedLocationIndex: Int = 0,
     val aadharNumber: String = "",
     val panNumber: String = "",
@@ -62,6 +65,8 @@ data class QuotationRequest(
     val productName: String = "",
     val serviceType: String = "", // Sales, Installation, Service, AMC, Site Visit
     val comments: String = "",
+    val userLat: Double = 0.0,
+    val userLng: Double = 0.0,
     val timestamp: Long = System.currentTimeMillis(),
     val status: String = "Pending", // Pending, Assigned, In Progress, Completed, Cancelled
     val assignedTechnicianId: String? = null,

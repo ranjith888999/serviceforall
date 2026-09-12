@@ -27,6 +27,8 @@ import com.srr.myapplication.R
 import com.srr.myapplication.model.QuotationRequest
 import com.srr.myapplication.repository.FirebaseRepository
 import com.srr.myapplication.util.DummyData
+import com.srr.myapplication.util.EmailHelper
+import com.srr.myapplication.util.LocationHelper
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -179,18 +181,52 @@ fun ProductDetailsScreen(navController: NavHostController, productId: String) {
                         val currentUser = auth.currentUser
                         if (currentUser != null) {
                             val user = repository.getUser(currentUser.uid)
-                            val request = QuotationRequest(
-                                userId = currentUser.uid,
-                                userName = user?.name ?: "Unknown",
-                                userPhone = currentUser.phoneNumber ?: "",
-                                productId = product.id,
-                                productName = product.name,
-                                serviceType = serviceType,
-                                comments = comments
-                            )
-                            repository.saveQuotationRequest(request)
-                            showQuotationDialog = false
-                            snackbarHostState.showSnackbar("Quotation request sent successfully!")
+                            if (user != null) {
+                                val currentLat = if (user.locationCoords.isNotEmpty()) {
+                                    user.locationCoords.getOrNull(user.selectedLocationIndex)?.get("lat") ?: user.latitude
+                                } else user.latitude
+                                
+                                val currentLng = if (user.locationCoords.isNotEmpty()) {
+                                    user.locationCoords.getOrNull(user.selectedLocationIndex)?.get("lng") ?: user.longitude
+                                } else user.longitude
+
+                                val request = QuotationRequest(
+                                    userId = currentUser.uid,
+                                    userName = user.name,
+                                    userPhone = currentUser.phoneNumber ?: user.phone,
+                                    productId = product.id,
+                                    productName = product.name,
+                                    serviceType = serviceType,
+                                    comments = comments,
+                                    userLat = currentLat,
+                                    userLng = currentLng
+                                )
+                                repository.saveQuotationRequest(request)
+                                
+                                // Find nearest technicians
+                                val allUsers = repository.getAllUsers()
+                                val technicians = allUsers.filter { it.role == "Technician" && it.isApproved }
+                                val nearestTechs = technicians.map { tech ->
+                                    val techLat = if (tech.locationCoords.isNotEmpty()) {
+                                        tech.locationCoords.getOrNull(tech.selectedLocationIndex)?.get("lat") ?: tech.latitude
+                                    } else tech.latitude
+                                    
+                                    val techLng = if (tech.locationCoords.isNotEmpty()) {
+                                        tech.locationCoords.getOrNull(tech.selectedLocationIndex)?.get("lng") ?: tech.longitude
+                                    } else tech.longitude
+                                    
+                                    val dist = LocationHelper.calculateDistance(currentLat, currentLng, techLat, techLng)
+                                    tech to dist
+                                }.sortedBy { it.second }.take(5)
+
+                                // Send Email in background
+                                launch {
+                                    EmailHelper.sendQuotationEmail(request, user, nearestTechs)
+                                }
+
+                                showQuotationDialog = false
+                                snackbarHostState.showSnackbar("Quotation request sent successfully!")
+                            }
                         }
                     }
                 }

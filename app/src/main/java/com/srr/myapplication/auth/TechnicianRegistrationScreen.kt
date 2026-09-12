@@ -36,6 +36,8 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
     var aadharNumber by remember { mutableStateOf("") }
     var panNumber by remember { mutableStateOf("") }
     var locationName by remember { mutableStateOf("") }
+    var lat by remember { mutableStateOf(0.0) }
+    var lng by remember { mutableStateOf(0.0) }
     var isLoading by remember { mutableStateOf(false) }
     var isDetectingLocation by remember { mutableStateOf(false) }
     var showGpsDialog by remember { mutableStateOf(false) }
@@ -136,14 +138,14 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
                             onClick = { 
                                 scope.launch {
                                     isDetectingLocation = true
-                                    val fetched = LocationHelper.getCurrentLocationName(context)
+                                    val result = LocationHelper.getCurrentLocation(context)
                                     isDetectingLocation = false
-                                    if (fetched == "GPS Disabled") {
+                                    if (result == null) {
                                         showGpsDialog = true
-                                    } else if (fetched.startsWith("Error") || fetched.contains("Unable")) {
-                                        Toast.makeText(context, fetched, Toast.LENGTH_LONG).show()
                                     } else {
-                                        locationName = fetched
+                                        locationName = result.name
+                                        lat = result.latitude
+                                        lng = result.longitude
                                     }
                                 }
                             }
@@ -179,7 +181,10 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
                                     role = "Technician",
                                     address = address,
                                     location = locationName,
+                                    latitude = lat,
+                                    longitude = lng,
                                     locations = listOf(locationName).filter { it.isNotEmpty() },
+                                    locationCoords = listOf(mapOf("lat" to lat, "lng" to lng)).filter { locationName.isNotEmpty() },
                                     selectedLocationIndex = 0,
                                     aadharNumber = aadharNumber,
                                     panNumber = panNumber,

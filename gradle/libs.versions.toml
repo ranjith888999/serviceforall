@@ -14,8 +14,11 @@ googleServices = "4.4.2"
 coil = "2.6.0"
 lottie = "6.4.0"
 playServicesLocation = "21.3.0"
+javaxMail = "1.6.2"
 
 [libraries]
+javax-mail = { group = "com.sun.mail", name = "android-mail", version.ref = "javaxMail" }
+javax-activation = { group = "com.sun.mail", name = "android-activation", version.ref = "javaxMail" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
