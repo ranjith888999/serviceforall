@@ -26,7 +26,7 @@ object EmailHelper {
             put("mail.smtp.port", "465")
         }
 
-        val session = Session.getDefaultInstance(props, object : Authenticator() {
+        val session = Session.getInstance(props, object : Authenticator() {
             override fun getPasswordAuthentication(): PasswordAuthentication {
                 return PasswordAuthentication(ADMIN_EMAIL, APP_PASSWORD)
             }

@@ -1,5 +1,6 @@
 package com.srr.myapplication.customer
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -36,6 +37,8 @@ import kotlinx.coroutines.launch
 fun ProductDetailsScreen(navController: NavHostController, productId: String) {
     val product = DummyData.allProducts.find { it.id == productId } ?: return
     var showQuotationDialog by remember { mutableStateOf(false) }
+    var isSubmitting by remember { mutableStateOf(false) }
+    
     val scope = rememberCoroutineScope()
     val repository = remember { FirebaseRepository() }
     val auth = remember { FirebaseAuth.getInstance() }
@@ -132,7 +135,7 @@ fun ProductDetailsScreen(navController: NavHostController, productId: String) {
                     )
                 }
                 
-                Divider(modifier = Modifier.padding(vertical = 24.dp), color = Color(0xFFF1F3F4))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 24.dp), color = Color(0xFFF1F3F4))
                 
                 Text(
                     text = "About this Service",
@@ -169,64 +172,82 @@ fun ProductDetailsScreen(navController: NavHostController, productId: String) {
                     }
                 }
                 
-                Spacer(modifier = Modifier.height(100.dp)) // Extra space for bottom bar
+                Spacer(modifier = Modifier.height(100.dp))
             }
         }
 
         if (showQuotationDialog) {
             QuotationDialog(
-                onDismiss = { showQuotationDialog = false },
+                isLoading = isSubmitting,
+                onDismiss = { if (!isSubmitting) showQuotationDialog = false },
                 onSave = { serviceType, comments ->
+                    isSubmitting = true
                     scope.launch {
-                        val currentUser = auth.currentUser
-                        if (currentUser != null) {
-                            val user = repository.getUser(currentUser.uid)
-                            if (user != null) {
-                                val currentLat = if (user.locationCoords.isNotEmpty()) {
-                                    user.locationCoords.getOrNull(user.selectedLocationIndex)?.get("lat") ?: user.latitude
-                                } else user.latitude
-                                
-                                val currentLng = if (user.locationCoords.isNotEmpty()) {
-                                    user.locationCoords.getOrNull(user.selectedLocationIndex)?.get("lng") ?: user.longitude
-                                } else user.longitude
-
-                                val request = QuotationRequest(
-                                    userId = currentUser.uid,
-                                    userName = user.name,
-                                    userPhone = currentUser.phoneNumber ?: user.phone,
-                                    productId = product.id,
-                                    productName = product.name,
-                                    serviceType = serviceType,
-                                    comments = comments,
-                                    userLat = currentLat,
-                                    userLng = currentLng
-                                )
-                                repository.saveQuotationRequest(request)
-                                
-                                // Find nearest technicians
-                                val allUsers = repository.getAllUsers()
-                                val technicians = allUsers.filter { it.role == "Technician" && it.isApproved }
-                                val nearestTechs = technicians.map { tech ->
-                                    val techLat = if (tech.locationCoords.isNotEmpty()) {
-                                        tech.locationCoords.getOrNull(tech.selectedLocationIndex)?.get("lat") ?: tech.latitude
-                                    } else tech.latitude
+                        try {
+                            val currentUser = auth.currentUser
+                            if (currentUser != null) {
+                                Log.d("ProductDetails", "Fetching user data for ${currentUser.uid}")
+                                val user = repository.getUser(currentUser.uid)
+                                if (user != null) {
+                                    val currentLat = if (user.locationCoords.isNotEmpty()) {
+                                        user.locationCoords.getOrNull(user.selectedLocationIndex)?.get("lat") ?: user.latitude
+                                    } else user.latitude
                                     
-                                    val techLng = if (tech.locationCoords.isNotEmpty()) {
-                                        tech.locationCoords.getOrNull(tech.selectedLocationIndex)?.get("lng") ?: tech.longitude
-                                    } else tech.longitude
-                                    
-                                    val dist = LocationHelper.calculateDistance(currentLat, currentLng, techLat, techLng)
-                                    tech to dist
-                                }.sortedBy { it.second }.take(5)
+                                    val currentLng = if (user.locationCoords.isNotEmpty()) {
+                                        user.locationCoords.getOrNull(user.selectedLocationIndex)?.get("lng") ?: user.longitude
+                                    } else user.longitude
 
-                                // Send Email in background
-                                launch {
-                                    EmailHelper.sendQuotationEmail(request, user, nearestTechs)
+                                    val request = QuotationRequest(
+                                        userId = currentUser.uid,
+                                        userName = user.name,
+                                        userPhone = currentUser.phoneNumber ?: user.phone,
+                                        productId = product.id,
+                                        productName = product.name,
+                                        serviceType = serviceType,
+                                        comments = comments,
+                                        userLat = currentLat,
+                                        userLng = currentLng
+                                    )
+                                    
+                                    Log.d("ProductDetails", "Saving quotation request")
+                                    repository.saveQuotationRequest(request)
+                                    
+                                    Log.d("ProductDetails", "Finding technicians")
+                                    // Find nearest technicians
+                                    val allUsers = repository.getAllUsers()
+                                    val technicians = allUsers.filter { it.role == "Technician" && it.isApproved }
+                                    val nearestTechs = technicians.map { tech ->
+                                        val techLat = if (tech.locationCoords.isNotEmpty()) {
+                                            tech.locationCoords.getOrNull(tech.selectedLocationIndex)?.get("lat") ?: tech.latitude
+                                        } else tech.latitude
+                                        
+                                        val techLng = if (tech.locationCoords.isNotEmpty()) {
+                                            tech.locationCoords.getOrNull(tech.selectedLocationIndex)?.get("lng") ?: tech.longitude
+                                        } else tech.longitude
+                                        
+                                        val dist = LocationHelper.calculateDistance(currentLat, currentLng, techLat, techLng)
+                                        tech to dist
+                                    }.sortedBy { it.second }.take(5)
+
+                                    Log.d("ProductDetails", "Sending email in background")
+                                    // Send Email in background, don't wait for it to finish UI update
+                                    launch {
+                                        EmailHelper.sendQuotationEmail(request, user, nearestTechs)
+                                    }
+
+                                    showQuotationDialog = false
+                                    snackbarHostState.showSnackbar("Quotation request sent successfully!")
+                                } else {
+                                    snackbarHostState.showSnackbar("Error: User profile not found.")
                                 }
-
-                                showQuotationDialog = false
-                                snackbarHostState.showSnackbar("Quotation request sent successfully!")
+                            } else {
+                                snackbarHostState.showSnackbar("Error: User not logged in.")
                             }
+                        } catch (e: Exception) {
+                            Log.e("ProductDetails", "Error submitting request", e)
+                            snackbarHostState.showSnackbar("Error: ${e.localizedMessage}")
+                        } finally {
+                            isSubmitting = false
                         }
                     }
                 }
@@ -237,7 +258,7 @@ fun ProductDetailsScreen(navController: NavHostController, productId: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun QuotationDialog(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
+fun QuotationDialog(isLoading: Boolean, onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
     var selectedService by remember { mutableStateOf("Sales") }
     var comments by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
@@ -268,7 +289,7 @@ fun QuotationDialog(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
                 
                 ExposedDropdownMenuBox(
                     expanded = expanded,
-                    onExpandedChange = { expanded = !expanded }
+                    onExpandedChange = { if (!isLoading) expanded = !expanded }
                 ) {
                     OutlinedTextField(
                         value = selectedService,
@@ -277,7 +298,8 @@ fun QuotationDialog(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
                         label = { Text("Service Type") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                         modifier = Modifier.menuAnchor().fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        enabled = !isLoading
                     )
                     ExposedDropdownMenu(
                         expanded = expanded,
@@ -304,7 +326,8 @@ fun QuotationDialog(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
                     placeholder = { Text("e.g. Prefer evening visit") },
                     modifier = Modifier.fillMaxWidth().height(120.dp),
                     shape = RoundedCornerShape(12.dp),
-                    maxLines = 4
+                    maxLines = 4,
+                    enabled = !isLoading
                 )
                 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -312,12 +335,21 @@ fun QuotationDialog(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
                 Button(
                     onClick = { onSave(selectedService, comments) },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    enabled = !isLoading
                 ) {
-                    Text("SAVE & SUBMIT", fontWeight = FontWeight.Bold)
+                    if (isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp)
+                    } else {
+                        Text("SAVE & SUBMIT", fontWeight = FontWeight.Bold)
+                    }
                 }
                 
-                TextButton(onClick = onDismiss, modifier = Modifier.padding(top = 8.dp)) {
+                TextButton(
+                    onClick = onDismiss, 
+                    modifier = Modifier.padding(top = 8.dp),
+                    enabled = !isLoading
+                ) {
                     Text("Go Back", color = Color.Gray)
                 }
             }
