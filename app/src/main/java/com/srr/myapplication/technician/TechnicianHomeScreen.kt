@@ -33,6 +33,7 @@ import com.srr.myapplication.model.QuotationRequest
 import com.srr.myapplication.model.User
 import com.srr.myapplication.navigation.Screen
 import com.srr.myapplication.repository.FirebaseRepository
+import com.srr.myapplication.util.AnalyticsHelper
 import com.srr.myapplication.util.LocationHelper
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -250,8 +251,16 @@ fun TechnicianHomeScreen(navController: NavHostController, uid: String) {
                             items(assignedTasks) { task ->
                                 TaskCard(task) { status, price, comment ->
                                     scope.launch {
-                                        repository.updateQuotationStatus(task.id, status, comment, price)
-                                        refreshData()
+                                        try {
+                                            repository.updateQuotationStatus(task.id, status, comment, price)
+                                            if (status == "Completed") {
+                                                AnalyticsHelper.trackEvent(AnalyticsHelper.EventType.SERVICE_COMPLETED, mapOf("product" to task.productName, "price" to (price ?: 0.0).toString()))
+                                            }
+                                            refreshData()
+                                        } catch (e: Exception) {
+                                            AnalyticsHelper.logError("TechHome", "Failed to update status", e)
+                                            Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 }
                             }
@@ -333,7 +342,7 @@ fun LocationSelectionDialog(
                         )
                     }
 
-                    Divider(modifier = Modifier.padding(vertical = 16.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
                     Button(
                         onClick = onAutoFetch,
@@ -379,7 +388,7 @@ fun TaskCard(task: QuotationRequest, onUpdate: (String, Double?, String?) -> Uni
                 Text(text = "Issue: ${task.comments}", modifier = Modifier.padding(top = 8.dp))
             }
 
-            Divider(modifier = Modifier.padding(vertical = 12.dp), thickness = 0.5.dp)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), thickness = 0.5.dp)
 
             if (task.status != "Completed" && task.status != "Cancelled") {
                 Button(

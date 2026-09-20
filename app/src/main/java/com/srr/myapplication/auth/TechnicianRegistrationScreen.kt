@@ -19,15 +19,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.google.firebase.auth.FirebaseAuth
 import com.srr.myapplication.model.User
 import com.srr.myapplication.navigation.Screen
 import com.srr.myapplication.repository.FirebaseRepository
+import com.srr.myapplication.util.AnalyticsHelper
 import com.srr.myapplication.util.LocationHelper
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: String) {
     var name by remember { mutableStateOf("") }
@@ -36,6 +38,7 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
     var aadharNumber by remember { mutableStateOf("") }
     var panNumber by remember { mutableStateOf("") }
     var locationName by remember { mutableStateOf("") }
+    var selectedExpertise by remember { mutableStateOf(setOf<String>()) }
     var lat by remember { mutableStateOf(0.0) }
     var lng by remember { mutableStateOf(0.0) }
     var isLoading by remember { mutableStateOf(false) }
@@ -46,6 +49,8 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
     val scope = rememberCoroutineScope()
     val repository = remember { FirebaseRepository() }
     val auth = remember { FirebaseAuth.getInstance() }
+
+    val expertiseOptions = listOf("CCTV", "EPABX", "Biometric", "Networking", "Cables", "IT Support", "Printers", "Water Controllers")
 
     if (showGpsDialog) {
         AlertDialog(
@@ -126,6 +131,33 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
                 RegistrationField(value = address, onValueChange = { address = it }, label = "Full Address", icon = Icons.Default.Home)
                 Spacer(modifier = Modifier.height(16.dp))
                 
+                // expertise Selection
+                Text(
+                    text = "Select Expertise / Specialized Departments",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                )
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    expertiseOptions.forEach { expertise ->
+                        FilterChip(
+                            selected = selectedExpertise.contains(expertise),
+                            onClick = {
+                                selectedExpertise = if (selectedExpertise.contains(expertise)) {
+                                    selectedExpertise - expertise
+                                } else {
+                                    selectedExpertise + expertise
+                                }
+                            },
+                            label = { Text(expertise, fontSize = 12.sp) }
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
                 // Location Picker
                 OutlinedTextField(
                     value = locationName,
@@ -167,32 +199,41 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
 
                 Button(
                     onClick = {
-                        if (validateTechnician(name, aadharNumber, panNumber, address, locationName)) {
+                        if (validateTechnician(name, aadharNumber, panNumber, address, locationName, selectedExpertise)) {
                             isLoading = true
                             scope.launch {
-                                val phone = if (phoneNumber.startsWith("+91")) phoneNumber else "+91$phoneNumber"
-                                val uid = auth.currentUser?.uid ?: phone
-                                
-                                val newUser = User(
-                                    uid = uid,
-                                    name = name,
-                                    email = email,
-                                    phone = phone,
-                                    role = "Technician",
-                                    address = address,
-                                    location = locationName,
-                                    latitude = lat,
-                                    longitude = lng,
-                                    locations = listOf(locationName).filter { it.isNotEmpty() },
-                                    locationCoords = listOf(mapOf("lat" to lat, "lng" to lng)).filter { locationName.isNotEmpty() },
-                                    selectedLocationIndex = 0,
-                                    aadharNumber = aadharNumber,
-                                    panNumber = panNumber,
-                                    registrationComplete = true
-                                )
-                                repository.saveUser(newUser)
-                                navController.navigate(Screen.TechnicianHome.createRoute(uid)) {
-                                    popUpTo(0) { inclusive = true }
+                                try {
+                                    val phone = if (phoneNumber.startsWith("+91")) phoneNumber else "+91$phoneNumber"
+                                    val uid = auth.currentUser?.uid ?: phone
+                                    
+                                    val newUser = User(
+                                        uid = uid,
+                                        name = name,
+                                        email = email,
+                                        phone = phone,
+                                        role = "Technician",
+                                        address = address,
+                                        location = locationName,
+                                        latitude = lat,
+                                        longitude = lng,
+                                        locations = listOf(locationName).filter { it.isNotEmpty() },
+                                        locationCoords = listOf(mapOf("lat" to lat, "lng" to lng)).filter { locationName.isNotEmpty() },
+                                        selectedLocationIndex = 0,
+                                        aadharNumber = aadharNumber,
+                                        panNumber = panNumber,
+                                        expertise = selectedExpertise.toList(),
+                                        registrationComplete = true
+                                    )
+                                    repository.saveUser(newUser)
+                                    AnalyticsHelper.trackEvent(AnalyticsHelper.EventType.REGISTRATION_COMPLETE, mapOf("role" to "Technician"))
+                                    navController.navigate(Screen.TechnicianHome.createRoute(uid)) {
+                                        popUpTo(0) { inclusive = true }
+                                    }
+                                } catch (e: Exception) {
+                                    AnalyticsHelper.logError("TechRegistration", "Failed to save tech", e)
+                                    Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                } finally {
+                                    isLoading = false
                                 }
                             }
                         }
@@ -201,7 +242,7 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
                         .fillMaxWidth()
                         .height(56.dp),
                     shape = RoundedCornerShape(12.dp),
-                    enabled = name.isNotEmpty() && aadharNumber.length == 12 && panNumber.length == 10 && address.isNotEmpty() && locationName.isNotEmpty() && !isDetectingLocation
+                    enabled = name.isNotEmpty() && aadharNumber.length == 12 && panNumber.length == 10 && address.isNotEmpty() && locationName.isNotEmpty() && !isDetectingLocation && selectedExpertise.isNotEmpty()
                 ) {
                     Text("REGISTER AS TECHNICIAN")
                 }
@@ -212,8 +253,8 @@ fun TechnicianRegistrationScreen(navController: NavHostController, phoneNumber: 
     }
 }
 
-private fun validateTechnician(name: String, aadhar: String, pan: String, address: String, location: String): Boolean {
-    return name.isNotEmpty() && aadhar.length == 12 && pan.length == 10 && address.isNotEmpty()
+private fun validateTechnician(name: String, aadhar: String, pan: String, address: String, location: String, expertise: Set<String>): Boolean {
+    return name.isNotEmpty() && aadhar.length == 12 && pan.length == 10 && address.isNotEmpty() && expertise.isNotEmpty()
 }
 
 @Composable

@@ -24,6 +24,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.srr.myapplication.R
 import com.srr.myapplication.navigation.Screen
 import com.srr.myapplication.repository.FirebaseRepository
+import com.srr.myapplication.util.AnalyticsHelper
 import kotlinx.coroutines.delay
 
 @Composable
@@ -40,6 +41,8 @@ fun SplashScreen(navController: NavHostController) {
     }
 
     LaunchedEffect(key1 = true) {
+        AnalyticsHelper.trackEvent(AnalyticsHelper.EventType.APP_OPEN)
+
         // Request permissions on start
         permissionsLauncher.launch(
             arrayOf(

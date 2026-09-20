@@ -15,8 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.co
-mpose.runtime.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -123,75 +122,77 @@ fun CustomerHomeScreen(navController: NavHostController, uid: String) {
         )
     }
 
-    if (showLocationDialog && userData != null) {
-        LocationSelectionDialog(
-            user = userData!!,
-            isFetching = isFetchingLocation,
-            onDismiss = { if (!isFetchingLocation) showLocationDialog = false },
-            onLocationSelected = { index ->
-                scope.launch {
-                    val updatedUser = userData!!.copy(selectedLocationIndex = index)
-                    repository.saveUser(updatedUser)
-                    userData = updatedUser
-                    showLocationDialog = false
-                }
-            },
-            onAddLocation = { newLocation ->
-                scope.launch {
-                    val currentLocations = userData!!.locations.toMutableList()
-                    if (currentLocations.size < 3) {
-                        currentLocations.add(newLocation)
-                        val updatedUser = userData!!.copy(
-                            locations = currentLocations,
-                            selectedLocationIndex = currentLocations.size - 1
-                        )
+    if (showLocationDialog) {
+        userData?.let { currentData ->
+            LocationSelectionDialog(
+                user = currentData,
+                isFetching = isFetchingLocation,
+                onDismiss = { if (!isFetchingLocation) showLocationDialog = false },
+                onLocationSelected = { index ->
+                    scope.launch {
+                        val updatedUser = currentData.copy(selectedLocationIndex = index)
                         repository.saveUser(updatedUser)
                         userData = updatedUser
+                        showLocationDialog = false
                     }
-                    showLocationDialog = false
-                }
-            },
-            onAutoFetch = {
-                scope.launch {
-                    isFetchingLocation = true
-                    val result = LocationHelper.getCurrentLocation(context)
-                    isFetchingLocation = false
-                    
-                    if (result == null) {
-                        showGpsDialog = true
-                    } else {
-                        val fetched = result.name
-                        val currentLat = result.latitude
-                        val currentLng = result.longitude
-                        
-                        val currentLocations = userData!!.locations.toMutableList()
-                        val currentCoords = userData!!.locationCoords.toMutableList()
-                        
+                },
+                onAddLocation = { newLocation ->
+                    scope.launch {
+                        val currentLocations = currentData.locations.toMutableList()
                         if (currentLocations.size < 3) {
-                            currentLocations.add(fetched)
-                            currentCoords.add(mapOf("lat" to currentLat, "lng" to currentLng))
-                            val updatedUser = userData!!.copy(
+                            currentLocations.add(newLocation)
+                            val updatedUser = currentData.copy(
                                 locations = currentLocations,
-                                locationCoords = currentCoords,
                                 selectedLocationIndex = currentLocations.size - 1
-                            )
-                            repository.saveUser(updatedUser)
-                            userData = updatedUser
-                        } else {
-                            currentLocations[userData!!.selectedLocationIndex] = fetched
-                            currentCoords[userData!!.selectedLocationIndex] = mapOf("lat" to currentLat, "lng" to currentLng)
-                            val updatedUser = userData!!.copy(
-                                locations = currentLocations,
-                                locationCoords = currentCoords
                             )
                             repository.saveUser(updatedUser)
                             userData = updatedUser
                         }
                         showLocationDialog = false
                     }
+                },
+                onAutoFetch = {
+                    scope.launch {
+                        isFetchingLocation = true
+                        val result = LocationHelper.getCurrentLocation(context)
+                        isFetchingLocation = false
+                        
+                        if (result == null) {
+                            showGpsDialog = true
+                        } else {
+                            val fetched = result.name
+                            val currentLat = result.latitude
+                            val currentLng = result.longitude
+                            
+                            val currentLocations = currentData.locations.toMutableList()
+                            val currentCoords = currentData.locationCoords.toMutableList()
+                            
+                            if (currentLocations.size < 3) {
+                                currentLocations.add(fetched)
+                                currentCoords.add(mapOf("lat" to currentLat, "lng" to currentLng))
+                                val updatedUser = currentData.copy(
+                                    locations = currentLocations,
+                                    locationCoords = currentCoords,
+                                    selectedLocationIndex = currentLocations.size - 1
+                                )
+                                repository.saveUser(updatedUser)
+                                userData = updatedUser
+                            } else {
+                                currentLocations[currentData.selectedLocationIndex] = fetched
+                                currentCoords[currentData.selectedLocationIndex] = mapOf("lat" to currentLat, "lng" to currentLng)
+                                val updatedUser = currentData.copy(
+                                    locations = currentLocations,
+                                    locationCoords = currentCoords
+                                )
+                                repository.saveUser(updatedUser)
+                                userData = updatedUser
+                            }
+                            showLocationDialog = false
+                        }
+                    }
                 }
-            }
-        )
+            )
+        }
     }
 
     Scaffold(
@@ -215,13 +216,15 @@ fun CustomerHomeScreen(navController: NavHostController, uid: String) {
                     .verticalScroll(rememberScrollState())
             ) {
                 // Top Search Section
+                val currentLocationText = userData?.let { 
+                    if (it.locations.isNotEmpty()) it.locations.getOrNull(it.selectedLocationIndex) ?: "Select Location"
+                    else it.location.ifEmpty { "Select Location" }
+                } ?: "Loading..."
+
                 TopSearchSection(
                     query = searchQuery,
                     onQueryChange = { searchQuery = it },
-                    currentLocation = userData?.let { 
-                        if (it.locations.isNotEmpty()) it.locations.getOrNull(it.selectedLocationIndex) ?: "Select Location"
-                        else it.location.ifEmpty { "Select Location" }
-                    } ?: "Loading...",
+                    currentLocation = currentLocationText,
                     onLocationClick = { showLocationDialog = true },
                     onLogout = {
                         auth.signOut()

@@ -4,6 +4,8 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
+import com.srr.myapplication.model.AnalyticsEvent
+import com.srr.myapplication.model.AppLog
 import com.srr.myapplication.model.Product
 import com.srr.myapplication.model.QuotationRequest
 import com.srr.myapplication.model.User
@@ -23,7 +25,6 @@ class FirebaseRepository {
 
     suspend fun getUser(uid: String): User? {
         return try {
-            // Force fetch from server to get latest status
             val snapshot = firestore.collection("users").document(uid).get(Source.SERVER).await()
             if (snapshot.exists()) {
                 val user = snapshot.toObject(User::class.java)
@@ -32,7 +33,6 @@ class FirebaseRepository {
                 null
             }
         } catch (e: Exception) {
-            // Fallback to cache if server fails
             val snapshot = firestore.collection("users").document(uid).get().await()
             snapshot.toObject(User::class.java)?.copy(uid = snapshot.id)
         }
@@ -113,7 +113,6 @@ class FirebaseRepository {
     suspend fun updateApprovalStatus(uid: String, approved: Boolean) {
         if (uid.isEmpty()) return
         try {
-            // Using update is better for specific fields to ensure listeners trigger
             firestore.collection("users").document(uid).update(
                 mapOf(
                     "isApproved" to approved,
@@ -121,7 +120,6 @@ class FirebaseRepository {
                 )
             ).await()
         } catch (e: Exception) {
-            // If document doesn't exist for some reason, use set merge
             firestore.collection("users").document(uid).set(
                 mapOf(
                     "isApproved" to approved,
@@ -178,5 +176,29 @@ class FirebaseRepository {
         try {
             firestore.collection("products").document(productId).delete().await()
         } catch (e: Exception) {}
+    }
+
+    suspend fun getAppLogs(): List<AppLog> {
+        return try {
+            val snapshot = firestore.collection("app_logs")
+                .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                .limit(100)
+                .get().await()
+            snapshot.toObjects(AppLog::class.java)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun getAnalytics(): List<AnalyticsEvent> {
+        return try {
+            val snapshot = firestore.collection("analytics")
+                .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                .limit(200)
+                .get().await()
+            snapshot.toObjects(AnalyticsEvent::class.java)
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 }

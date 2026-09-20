@@ -17,6 +17,7 @@ data class User(
     val selectedLocationIndex: Int = 0,
     val aadharNumber: String = "",
     val panNumber: String = "",
+    val expertise: List<String> = emptyList(), // For Technicians (CCTV, Networking, etc.)
     val registrationComplete: Boolean = false,
     
     @get:PropertyName("isApproved")
@@ -73,4 +74,25 @@ data class QuotationRequest(
     val assignedTechnicianName: String? = null,
     val technicianComments: String? = null,
     val finalPrice: Double? = null
+)
+
+data class AppLog(
+    val id: String = "",
+    val userId: String? = null,
+    val userName: String? = null,
+    val userRole: String? = null,
+    val tag: String = "",
+    val message: String = "",
+    val stackTrace: String? = null,
+    val deviceModel: String = "",
+    val osVersion: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class AnalyticsEvent(
+    val id: String = "",
+    val type: String = "", // REGISTRATION, QUOTATION_CREATED, SERVICE_COMPLETED, APP_OPEN
+    val userId: String? = null,
+    val metadata: Map<String, String> = emptyList<Pair<String, String>>().toMap(),
+    val timestamp: Long = System.currentTimeMillis()
 )

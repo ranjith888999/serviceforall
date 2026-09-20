@@ -22,6 +22,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.srr.myapplication.model.User
 import com.srr.myapplication.navigation.Screen
 import com.srr.myapplication.repository.FirebaseRepository
+import com.srr.myapplication.util.AnalyticsHelper
 import com.srr.myapplication.util.LocationHelper
 import kotlinx.coroutines.launch
 
@@ -155,27 +156,35 @@ fun RegistrationScreen(navController: NavHostController, phoneNumber: String) {
                     onClick = {
                         isLoading = true
                         scope.launch {
-                            val phone = if (phoneNumber.startsWith("+91")) phoneNumber else "+91$phoneNumber"
-                            val uid = auth.currentUser?.uid ?: phone
-                            
-                            val newUser = User(
-                                uid = uid,
-                                name = name,
-                                email = email,
-                                phone = phone,
-                                role = "Customer",
-                                address = address,
-                                location = locationName,
-                                latitude = lat,
-                                longitude = lng,
-                                locations = listOf(locationName).filter { it.isNotEmpty() },
-                                locationCoords = listOf(mapOf("lat" to lat, "lng" to lng)).filter { locationName.isNotEmpty() },
-                                selectedLocationIndex = 0,
-                                registrationComplete = true
-                            )
-                            repository.saveUser(newUser)
-                            navController.navigate(Screen.CustomerHome.createRoute(uid)) {
-                                popUpTo(0) { inclusive = true }
+                            try {
+                                val phone = if (phoneNumber.startsWith("+91")) phoneNumber else "+91$phoneNumber"
+                                val uid = auth.currentUser?.uid ?: phone
+                                
+                                val newUser = User(
+                                    uid = uid,
+                                    name = name,
+                                    email = email,
+                                    phone = phone,
+                                    role = "Customer",
+                                    address = address,
+                                    location = locationName,
+                                    latitude = lat,
+                                    longitude = lng,
+                                    locations = listOf(locationName).filter { it.isNotEmpty() },
+                                    locationCoords = listOf(mapOf("lat" to lat, "lng" to lng)).filter { locationName.isNotEmpty() },
+                                    selectedLocationIndex = 0,
+                                    registrationComplete = true
+                                )
+                                repository.saveUser(newUser)
+                                AnalyticsHelper.trackEvent(AnalyticsHelper.EventType.REGISTRATION_COMPLETE, mapOf("role" to "Customer"))
+                                navController.navigate(Screen.CustomerHome.createRoute(uid)) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            } catch (e: Exception) {
+                                AnalyticsHelper.logError("Registration", "Failed to complete registration", e)
+                                Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                            } finally {
+                                isLoading = false
                             }
                         }
                     },

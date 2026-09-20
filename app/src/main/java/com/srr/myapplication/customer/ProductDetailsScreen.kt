@@ -27,6 +27,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.srr.myapplication.R
 import com.srr.myapplication.model.QuotationRequest
 import com.srr.myapplication.repository.FirebaseRepository
+import com.srr.myapplication.util.AnalyticsHelper
 import com.srr.myapplication.util.DummyData
 import com.srr.myapplication.util.EmailHelper
 import com.srr.myapplication.util.LocationHelper
@@ -211,6 +212,7 @@ fun ProductDetailsScreen(navController: NavHostController, productId: String) {
                                     
                                     Log.d("ProductDetails", "Saving quotation request")
                                     repository.saveQuotationRequest(request)
+                                    AnalyticsHelper.trackEvent(AnalyticsHelper.EventType.QUOTATION_CREATED, mapOf("product" to product.name))
                                     
                                     Log.d("ProductDetails", "Finding technicians")
                                     // Find nearest technicians
@@ -230,7 +232,7 @@ fun ProductDetailsScreen(navController: NavHostController, productId: String) {
                                     }.sortedBy { it.second }.take(5)
 
                                     Log.d("ProductDetails", "Sending email in background")
-                                    // Send Email in background, don't wait for it to finish UI update
+                                    // Send Email in background
                                     launch {
                                         EmailHelper.sendQuotationEmail(request, user, nearestTechs)
                                     }
@@ -245,6 +247,7 @@ fun ProductDetailsScreen(navController: NavHostController, productId: String) {
                             }
                         } catch (e: Exception) {
                             Log.e("ProductDetails", "Error submitting request", e)
+                            AnalyticsHelper.logError("ProductDetails", "Failed to submit request", e)
                             snackbarHostState.showSnackbar("Error: ${e.localizedMessage}")
                         } finally {
                             isSubmitting = false

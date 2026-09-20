@@ -1,6 +1,7 @@
 package com.srr.myapplication.admin
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.google.firebase.auth.FirebaseAuth
+import com.srr.myapplication.model.AnalyticsEvent
+import com.srr.myapplication.model.AppLog
 import com.srr.myapplication.model.Product
 import com.srr.myapplication.model.QuotationRequest
 import com.srr.myapplication.model.User
@@ -45,6 +49,8 @@ fun AdminDashboardScreen(navController: NavHostController, uid: String) {
     var allUsers by remember { mutableStateOf<List<User>>(emptyList()) }
     var quotations by remember { mutableStateOf<List<QuotationRequest>>(emptyList()) }
     var products by remember { mutableStateOf<List<Product>>(emptyList()) }
+    var appLogs by remember { mutableStateOf<List<AppLog>>(emptyList()) }
+    var analytics by remember { mutableStateOf<List<AnalyticsEvent>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
     fun refreshData() {
@@ -56,6 +62,8 @@ fun AdminDashboardScreen(navController: NavHostController, uid: String) {
                 allTechnicians = users.filter { it.role == "Technician" }
                 quotations = repository.getAllQuotations()
                 products = repository.getProducts()
+                appLogs = repository.getAppLogs()
+                analytics = repository.getAnalytics()
             } catch (e: Exception) {
                 Toast.makeText(context, "Error fetching data: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
@@ -82,7 +90,7 @@ fun AdminDashboardScreen(navController: NavHostController, uid: String) {
                             popUpTo(0) { inclusive = true }
                         }
                     }) {
-                        Icon(Icons.Default.Logout, contentDescription = "Logout", tint = Color.Red)
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout", tint = Color.Red)
                     }
                 }
             )
@@ -94,6 +102,8 @@ fun AdminDashboardScreen(navController: NavHostController, uid: String) {
                 Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Approvals") })
                 Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Users") })
                 Tab(selected = selectedTab == 3, onClick = { selectedTab = 3 }, text = { Text("Products") })
+                Tab(selected = selectedTab == 4, onClick = { selectedTab = 4 }, text = { Text("Analytics") })
+                Tab(selected = selectedTab == 5, onClick = { selectedTab = 5 }, text = { Text("App Logs") })
             }
 
             if (isLoading) {
@@ -152,8 +162,106 @@ fun AdminDashboardScreen(navController: NavHostController, uid: String) {
                             } 
                         }
                     )
+                    4 -> AnalyticsPanel(analytics)
+                    5 -> AppLogsPanel(appLogs)
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun AnalyticsPanel(events: List<AnalyticsEvent>) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text("App Statistics", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        val typeCount = events.groupBy { it.type }.mapValues { it.value.size }
+        
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatCard("Requests", typeCount["QUOTATION_CREATED"]?.toString() ?: "0", Modifier.weight(1f))
+            StatCard("Regs", typeCount["REGISTRATION_COMPLETE"]?.toString() ?: "0", Modifier.weight(1f))
+            StatCard("Logins", typeCount["LOGIN_SUCCESS"]?.toString() ?: "0", Modifier.weight(1f))
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+        Text("Recent Events", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        
+        LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(events) { event ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text(event.type, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text(SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date(event.timestamp)), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        }
+                        if (event.userId != null) Text("User ID: ${event.userId}", style = MaterialTheme.typography.bodySmall)
+                        if (event.metadata.isNotEmpty()) {
+                            Text("Data: ${event.metadata}", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AppLogsPanel(logs: List<AppLog>) {
+    if (logs.isEmpty()) {
+        EmptyState("No logs found")
+    } else {
+        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(logs) { log ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = if (log.tag.contains("Error", true)) Color(0xFFFFEBEE) else Color.White),
+                    border = BorderStroke(1.dp, if (log.tag.contains("Error", true)) Color.Red.copy(alpha = 0.3f) else Color.Transparent)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Text(log.tag, fontWeight = FontWeight.Bold, color = if (log.tag.contains("Error", true)) Color.Red else Color.Black)
+                            Text(SimpleDateFormat("dd MMM, HH:mm:ss", Locale.getDefault()).format(Date(log.timestamp)), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        }
+                        Text(log.message, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Device: ${log.deviceModel} | ${log.osVersion}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        if (log.userName != null) Text("User: ${log.userName} (${log.userRole})", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        
+                        if (!log.stackTrace.isNullOrEmpty()) {
+                            var expanded by remember { mutableStateOf(false) }
+                            TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(0.dp)) {
+                                Text(if (expanded) "Hide Stacktrace" else "Show Stacktrace", fontSize = 12.sp)
+                            }
+                            if (expanded) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).verticalScroll(rememberScrollState()),
+                                    color = Color.Black.copy(alpha = 0.05f),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(log.stackTrace, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(8.dp), color = Color.DarkGray)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+            Text(label, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
@@ -229,7 +337,7 @@ fun QuotationCard(quote: QuotationRequest, technicians: List<User>, onAssign: (S
                 Text(text = "Note: ${quote.comments}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
             }
 
-            Divider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), thickness = 0.5.dp)
 
             if (quote.status == "Pending") {
                 Button(
@@ -265,7 +373,7 @@ fun QuotationCard(quote: QuotationRequest, technicians: List<User>, onAssign: (S
                         items(technicians, key = { it.uid }) { tech ->
                             ListItem(
                                 headlineContent = { Text(tech.name) },
-                                supportingContent = { Text(tech.location) },
+                                supportingContent = { Text("${tech.location} | ${tech.expertise.joinToString()}") },
                                 modifier = Modifier.clickable {
                                     onAssign(quote.id, tech)
                                     showAssignDialog = false
@@ -478,12 +586,25 @@ fun TechnicianApprovalCard(tech: User, onAction: (String, Boolean) -> Unit) {
                     StatusBadge("Pending")
                 }
             }
-            Divider(modifier = Modifier.padding(vertical = 12.dp), thickness = 0.5.dp)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), thickness = 0.5.dp)
             InfoRow(label = "Email", value = tech.email)
             InfoRow(label = "Aadhar", value = tech.aadharNumber)
             InfoRow(label = "PAN", value = tech.panNumber)
             InfoRow(label = "Location", value = tech.location)
             InfoRow(label = "Address", value = tech.address)
+            
+            if (tech.expertise.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Expertise:", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    tech.expertise.forEach { exp ->
+                        Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(4.dp)) {
+                            Text(exp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (tech.isApproved) {
