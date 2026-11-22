@@ -47,10 +47,7 @@ fun SplashScreen(navController: NavHostController) {
         permissionsLauncher.launch(
             arrayOf(
                 android.Manifest.permission.ACCESS_FINE_LOCATION,
-                android.Manifest.permission.ACCESS_COARSE_LOCATION,
-                android.Manifest.permission.READ_SMS,
-                android.Manifest.permission.RECEIVE_SMS,
-                android.Manifest.permission.READ_CONTACTS
+                android.Manifest.permission.ACCESS_COARSE_LOCATION
             )
         )
 
