@@ -1,5 +1,6 @@
 package com.srr.myapplication.auth
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -8,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -16,18 +18,71 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.PhoneAuthProvider
 import com.srr.myapplication.navigation.Screen
 import com.srr.myapplication.repository.FirebaseRepository
+import com.srr.myapplication.util.AnalyticsHelper
 import kotlinx.coroutines.launch
 
 @Composable
-fun OTPScreen(navController: NavHostController, phoneNumber: String) {
+fun OTPScreen(navController: NavHostController, phoneNumber: String, verificationId: String = "") {
     var otp by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val repository = remember { FirebaseRepository() }
     val auth = remember { FirebaseAuth.getInstance() }
-    
+    val context = LocalContext.current
+
+    fun checkUserAndNavigate(uid: String, phone: String) {
+        scope.launch {
+            val formattedPhone = if (phone.startsWith("+91")) phone else "+91$phone"
+            val userByPhone = repository.getUserByPhone(formattedPhone)
+            val userByUid = if (uid.isNotEmpty()) repository.getUser(uid) else null
+            val finalUser = userByUid ?: userByPhone
+
+            if (finalUser != null && finalUser.registrationComplete) {
+                AnalyticsHelper.trackEvent(AnalyticsHelper.EventType.LOGIN_SUCCESS, mapOf("role" to finalUser.role))
+                when (finalUser.role) {
+                    "Technician" -> navController.navigate(Screen.TechnicianHome.createRoute(finalUser.uid)) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                    "Admin" -> navController.navigate(Screen.AdminDashboard.createRoute(finalUser.uid)) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                    else -> navController.navigate(Screen.CustomerHome.createRoute(finalUser.uid)) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
+            } else {
+                navController.navigate(Screen.RoleSelection.createRoute(phoneNumber))
+            }
+            isLoading = false
+        }
+    }
+
+    fun verifyOtp() {
+        if (otp.length != 6) return
+        isLoading = true
+
+        if (verificationId.isNotEmpty()) {
+            val credential = PhoneAuthProvider.getCredential(verificationId, otp)
+            auth.signInWithCredential(credential).addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    val uid = auth.currentUser?.uid ?: ""
+                    checkUserAndNavigate(uid, phoneNumber)
+                } else {
+                    isLoading = false
+                    val errorMsg = task.exception?.localizedMessage ?: "Invalid OTP Code"
+                    Toast.makeText(context, "Verification Failed: $errorMsg", Toast.LENGTH_LONG).show()
+                }
+            }
+        } else {
+            // Fallback mode for testing/local verification
+            val currentUid = auth.currentUser?.uid ?: ""
+            checkUserAndNavigate(currentUid, phoneNumber)
+        }
+    }
+
     if (isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -74,48 +129,7 @@ fun OTPScreen(navController: NavHostController, phoneNumber: String) {
             Spacer(modifier = Modifier.height(32.dp))
             
             Button(
-                onClick = {
-                    if (otp.length == 6) {
-                        isLoading = true
-                        scope.launch {
-                            val formattedPhone = if (phoneNumber.startsWith("+91")) phoneNumber else "+91$phoneNumber"
-                            val userByPhone = repository.getUserByPhone(formattedPhone)
-                            
-                            if (userByPhone != null && userByPhone.registrationComplete) {
-                                when (userByPhone.role) {
-                                    "Technician" -> navController.navigate(Screen.TechnicianHome.createRoute(userByPhone.uid)) {
-                                        popUpTo(0) { inclusive = true }
-                                    }
-                                    "Admin" -> navController.navigate(Screen.AdminDashboard.createRoute(userByPhone.uid)) {
-                                        popUpTo(0) { inclusive = true }
-                                    }
-                                    else -> navController.navigate(Screen.CustomerHome.createRoute(userByPhone.uid)) {
-                                        popUpTo(0) { inclusive = true }
-                                    }
-                                }
-                            } else {
-                                val currentUid = auth.currentUser?.uid
-                                if (currentUid != null) {
-                                    val userByUid = repository.getUser(currentUid)
-                                    if (userByUid != null && userByUid.registrationComplete) {
-                                        if (userByUid.role == "Technician") {
-                                            navController.navigate(Screen.TechnicianHome.createRoute(userByUid.uid)) { popUpTo(0) { inclusive = true } }
-                                        } else if (userByUid.role == "Admin") {
-                                            navController.navigate(Screen.AdminDashboard.createRoute(userByUid.uid)) { popUpTo(0) { inclusive = true } }
-                                        } else {
-                                            navController.navigate(Screen.CustomerHome.createRoute(userByUid.uid)) { popUpTo(0) { inclusive = true } }
-                                        }
-                                    } else {
-                                        navController.navigate(Screen.RoleSelection.createRoute(phoneNumber))
-                                    }
-                                } else {
-                                    navController.navigate(Screen.RoleSelection.createRoute(phoneNumber))
-                                }
-                            }
-                            isLoading = false
-                        }
-                    }
-                },
+                onClick = { verifyOtp() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -123,7 +137,7 @@ fun OTPScreen(navController: NavHostController, phoneNumber: String) {
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
                 ),
-                enabled = otp.length == 6
+                enabled = otp.length == 6 && !isLoading
             ) {
                 Text(
                     text = "VERIFY & CONTINUE",
@@ -139,8 +153,8 @@ fun OTPScreen(navController: NavHostController, phoneNumber: String) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(text = "Didn't receive code? ", color = Color.Gray)
-                TextButton(onClick = { /* Resend OTP */ }) {
-                    Text(text = "Resend", color = MaterialTheme.colorScheme.secondary)
+                TextButton(onClick = { navController.navigateUp() }) {
+                    Text(text = "Resend / Back", color = MaterialTheme.colorScheme.secondary)
                 }
             }
         }

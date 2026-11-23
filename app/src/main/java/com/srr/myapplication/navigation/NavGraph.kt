@@ -12,8 +12,9 @@ import com.srr.myapplication.admin.*
 sealed class Screen(val route: String) {
     object Splash : Screen("splash")
     object Login : Screen("login")
-    object OTP : Screen("otp/{phoneNumber}") {
-        fun createRoute(phoneNumber: String) = "otp/$phoneNumber"
+    object OTP : Screen("otp/{phoneNumber}?verificationId={verificationId}") {
+        fun createRoute(phoneNumber: String, verificationId: String = "") = 
+            if (verificationId.isNotEmpty()) "otp/$phoneNumber?verificationId=$verificationId" else "otp/$phoneNumber"
     }
     object RoleSelection : Screen("role_selection/{phoneNumber}") {
         fun createRoute(phoneNumber: String) = "role_selection/$phoneNumber"
@@ -53,7 +54,8 @@ fun AppNavigation(navController: NavHostController) {
         composable(Screen.Login.route) { LoginScreen(navController) }
         composable(Screen.OTP.route) { backStackEntry ->
             val phoneNumber = backStackEntry.arguments?.getString("phoneNumber") ?: ""
-            OTPScreen(navController, phoneNumber)
+            val verificationId = backStackEntry.arguments?.getString("verificationId") ?: ""
+            OTPScreen(navController, phoneNumber, verificationId)
         }
         composable(Screen.RoleSelection.route) { backStackEntry ->
             val phoneNumber = backStackEntry.arguments?.getString("phoneNumber") ?: ""
