@@ -235,6 +235,11 @@ fun CustomerHomeScreen(navController: NavHostController, uid: String) {
                     onProfileClick = { navController.navigate(Screen.Profile.route) }
                 )
 
+                if (!isHyderabadLocation(currentLocationText)) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    ExpansionBanner(onLocationClick = { showLocationDialog = true })
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Modern Category Tab Bar
@@ -258,6 +263,60 @@ fun CustomerHomeScreen(navController: NavHostController, uid: String) {
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun ExpansionBanner(onLocationClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+        border = BorderStroke(1.dp, Color(0xFFFFB74D))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFFF9800).copy(alpha = 0.2f),
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = Color(0xFFE65100),
+                        modifier = Modifier.padding(6.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Currently Available in Hyderabad Only",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color(0xFFE65100)
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Thank you for choosing Service For Ever! Our operations are currently active exclusively within Hyderabad & Secunderabad. We are expanding rapidly and look forward to bringing our services to your location very soon!",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF424242),
+                lineHeight = 18.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            TextButton(
+                onClick = onLocationClick,
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Text(
+                    text = "📍 Click here to change or select a Hyderabad location",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp
+                )
             }
         }
     }

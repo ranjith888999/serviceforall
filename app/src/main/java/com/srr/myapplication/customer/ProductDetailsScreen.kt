@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -32,12 +34,20 @@ import com.srr.myapplication.util.DummyData
 import com.srr.myapplication.util.EmailHelper
 import com.srr.myapplication.util.LocationHelper
 import kotlinx.coroutines.launch
+import java.util.Locale
+
+fun isHyderabadLocation(location: String): Boolean {
+    if (location.isEmpty() || location == "Loading..." || location == "Select Location") return true
+    val lower = location.lowercase(Locale.getDefault())
+    return lower.contains("hyderabad") || lower.contains("secunderabad") || lower.contains("cyberabad")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProductDetailsScreen(navController: NavHostController, productId: String) {
     val product = DummyData.allProducts.find { it.id == productId } ?: return
     var showQuotationDialog by remember { mutableStateOf(false) }
+    var showNonHyderabadDialog by remember { mutableStateOf(false) }
     var isSubmitting by remember { mutableStateOf(false) }
     
     val scope = rememberCoroutineScope()
@@ -67,7 +77,22 @@ fun ProductDetailsScreen(navController: NavHostController, productId: String) {
                 color = Color.White
             ) {
                 Button(
-                    onClick = { showQuotationDialog = true },
+                    onClick = {
+                        scope.launch {
+                            val uid = auth.currentUser?.uid ?: ""
+                            val user = if (uid.isNotEmpty()) repository.getUser(uid) else null
+                            val currentLoc = user?.let {
+                                if (it.locations.isNotEmpty()) it.locations.getOrNull(it.selectedLocationIndex) ?: it.location
+                                else it.location
+                            } ?: ""
+                            
+                            if (isHyderabadLocation(currentLoc)) {
+                                showQuotationDialog = true
+                            } else {
+                                showNonHyderabadDialog = true
+                            }
+                        }
+                    },
                     modifier = Modifier
                         .padding(horizontal = 16.dp, vertical = 20.dp)
                         .fillMaxWidth()
@@ -177,6 +202,39 @@ fun ProductDetailsScreen(navController: NavHostController, productId: String) {
             }
         }
 
+        if (showNonHyderabadDialog) {
+            AlertDialog(
+                onDismissRequest = { showNonHyderabadDialog = false },
+                icon = {
+                    Icon(Icons.Default.LocationOff, contentDescription = null, tint = Color(0xFFE65100), modifier = Modifier.size(36.dp))
+                },
+                title = {
+                    Text(
+                        text = "Currently Available Only in Hyderabad",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        textAlign = TextAlign.Center
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Thank you so much for your interest in Service For Ever! Currently, our operations are active exclusively within Hyderabad and Secunderabad.\n\nWe are expanding rapidly and look forward to serving your area coming soon!",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = Color.DarkGray,
+                        lineHeight = 20.sp
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showNonHyderabadDialog = false },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Understood")
+                    }
+                }
+            )
+        }
+
         if (showQuotationDialog) {
             QuotationDialog(
                 isLoading = isSubmitting,
@@ -215,7 +273,6 @@ fun ProductDetailsScreen(navController: NavHostController, productId: String) {
                                     AnalyticsHelper.trackEvent(AnalyticsHelper.EventType.QUOTATION_CREATED, mapOf("product" to product.name))
                                     
                                     Log.d("ProductDetails", "Finding technicians")
-                                    // Find nearest technicians
                                     val allUsers = repository.getAllUsers()
                                     val technicians = allUsers.filter { it.role == "Technician" && it.isApproved }
                                     val nearestTechs = technicians.map { tech ->
@@ -232,7 +289,6 @@ fun ProductDetailsScreen(navController: NavHostController, productId: String) {
                                     }.sortedBy { it.second }.take(5)
 
                                     Log.d("ProductDetails", "Sending email in background")
-                                    // Send Email in background
                                     launch {
                                         EmailHelper.sendQuotationEmail(request, user, nearestTechs)
                                     }
